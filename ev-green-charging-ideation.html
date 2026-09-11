@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noonshift</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f5f7f5; --surface:#ffffff; --surface-2:#eef2ee; --ink:#17211c; --ink-2:#4b5751; --ink-3:#7a857f;
+  --line:#d9e0da; --accent:#1f7a5c; --accent-ink:#ffffff; --accent-soft:#dcefe6;
+  --fossil:#b9730a; --fossil-soft:#f7e7c9; --danger:#a83a2c; --danger-soft:#f6dcd7;
+  --code-bg:#eef2ee; --shadow:0 1px 2px rgba(23,33,28,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1512; --surface:#161d19; --surface-2:#1d2622; --ink:#e4ebe6; --ink-2:#a9b5ae; --ink-3:#7f8a84;
+    --line:#2a3530; --accent:#4fbf95; --accent-ink:#0f1512; --accent-soft:#1a332a;
+    --fossil:#e0a53a; --fossil-soft:#3a2c12; --danger:#e07a6a; --danger-soft:#3a1f1b;
+    --code-bg:#1d2622; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1512; --surface:#161d19; --surface-2:#1d2622; --ink:#e4ebe6; --ink-2:#a9b5ae; --ink-3:#7f8a84;
+  --line:#2a3530; --accent:#4fbf95; --accent-ink:#0f1512; --accent-soft:#1a332a;
+  --fossil:#e0a53a; --fossil-soft:#3a2c12; --danger:#e07a6a; --danger-soft:#3a1f1b;
+  --code-bg:#1d2622; --shadow:none;
+}
+*{box-sizing:border-box}
+html{color-scheme:light dark}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-block:0 4rem;padding-inline:clamp(16px,4vw,40px)}
+.wrap{max-width:900px;margin:0 auto}
+h1,h2,h3,h4{font-family:"IBM Plex Sans",system-ui,sans-serif;text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:clamp(2rem,5vw,3rem);font-weight:700;letter-spacing:-.02em}
+h2{font-size:1.35rem;font-weight:600}
+h3{font-size:1.05rem;font-weight:600;margin-block:1.4rem .5rem}
+h4{font-size:.95rem;font-weight:600;margin-block:1rem .35rem}
+p{margin:0 0 .85rem;max-width:72ch}
+ul,ol{margin:0 0 .9rem;padding-left:1.3rem;max-width:72ch}
+li{margin-bottom:.3rem}
+li>ul{margin-top:.3rem}
+a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em}
+code{background:var(--code-bg);padding:.1em .35em;border-radius:3px}
+pre{background:var(--code-bg);padding:.9rem 1rem;border-radius:6px;overflow-x:auto;font-size:.85rem;line-height:1.5;margin:0 0 1rem}
+pre code{background:none;padding:0}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+header{padding-block:2.5rem 1.5rem;border-bottom:1px solid var(--line);margin-bottom:1.5rem}
+header .sub{font-size:1.1rem;color:var(--ink-2);max-width:60ch;margin-top:.6rem}
+header .meta{display:flex;flex-wrap:wrap;gap:.5rem 1.4rem;margin-top:1rem;font-size:.85rem;color:var(--ink-3)}
+.toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:0 0 1.2rem}
+.toolbar button{font:inherit;font-size:.85rem;padding:.35rem .8rem;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;cursor:pointer}
+.toolbar button:hover{border-color:var(--accent)}
+.toolbar button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.toc{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1.5rem;padding:0;list-style:none;max-width:none}
+.toc a{font-size:.8rem;padding:.25rem .6rem;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--ink-2);background:var(--surface)}
+.toc a:hover{border-color:var(--accent);color:var(--accent)}
+details{border:1px solid var(--line);background:var(--surface);border-radius:8px;margin-bottom:.9rem;box-shadow:var(--shadow)}
+details>summary{list-style:none;cursor:pointer;padding:1rem 1.1rem;display:flex;align-items:baseline;gap:.9rem}
+details>summary::-webkit-details-marker{display:none}
+details>summary .num{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--accent);min-width:2ch}
+details>summary .chev{margin-left:auto;color:var(--ink-3);transition:transform .15s}
+details[open]>summary .chev{transform:rotate(90deg)}
+details>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:8px}
+details>.body{padding:0 1.1rem 1.2rem;border-top:1px solid var(--line)}
+details>.body>*:first-child{margin-top:1rem}
+.tldr{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:1.1rem 1.3rem;margin-bottom:1.4rem}
+.tldr p:last-child{margin-bottom:0}
+.claim{font-size:1.05rem;font-weight:500;padding:.9rem 1.1rem;background:var(--accent-soft);border-radius:6px;margin:1rem 0;max-width:none}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.9rem;margin:0 0 1rem}
+.tile{background:var(--surface-2);border-radius:6px;padding:.9rem 1rem}
+.tile h4{margin-top:0}
+.tile p:last-child,.tile ul:last-child{margin-bottom:0}
+.tablewrap{overflow-x:auto;margin:0 0 1rem;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:560px}
+th,td{text-align:left;vertical-align:top;padding:.55rem .65rem;border-bottom:1px solid var(--line)}
+th{font-weight:600;background:var(--surface-2);font-size:.82rem;letter-spacing:.02em}
+td.num,th.num{font-variant-numeric:tabular-nums;text-align:right}
+.tag{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;padding:.15rem .45rem;border-radius:3px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
+.tag.ok{background:var(--accent-soft);color:var(--accent)}
+.tag.warn{background:var(--fossil-soft);color:var(--fossil)}
+.tag.bad{background:var(--danger-soft);color:var(--danger)}
+.yes{color:var(--accent);font-weight:600}.no{color:var(--ink-3)}.part{color:var(--fossil);font-weight:500}
+.note{font-size:.85rem;color:var(--ink-2);border-left:3px solid var(--line);padding:.4rem .9rem;margin:0 0 1rem;max-width:72ch}
+.note.warn{border-color:var(--fossil)}
+figure{margin:1rem 0 1.2rem;background:var(--surface-2);border-radius:6px;padding:.8rem}
+figure svg{width:100%;height:auto;display:block;max-width:100%}
+figcaption{font-size:.8rem;color:var(--ink-2);margin-top:.5rem;line-height:1.45}
+.arch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5rem;margin:0 0 .6rem}
+.arch .box{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:.6rem .7rem;font-size:.82rem;line-height:1.4}
+.arch .box b{display:block;font-size:.85rem;margin-bottom:.2rem}
+.arch .box.core{border-color:var(--accent);background:var(--accent-soft)}
+.arrow{text-align:center;color:var(--ink-3);font-size:.8rem;margin:.1rem 0 .5rem;font-family:"IBM Plex Mono",monospace}
+.refs{font-size:.88rem}
+.refs li{margin-bottom:.45rem;overflow-wrap:anywhere}
+.small{font-size:.85rem;color:var(--ink-2)}
+kbd.step{font-family:"IBM Plex Mono",monospace;font-size:.75rem;background:var(--surface-2);padding:.1rem .4rem;border-radius:3px;border:1px solid var(--line)}
+@media (prefers-reduced-motion: reduce){details>summary .chev{transition:none}}
+@media (max-width:480px){details>summary{padding:.85rem .9rem}details>.body{padding:0 .9rem 1rem}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Hackathon ideation · EV charging × renewable grid supply</div>
+  <h1>Noonshift</h1>
+  <p class="sub">A deadline-based charging scheduler that moves flexible EV charging into the hours the grid is actually clean — starting with the one place drivers already park for eight hours in daylight: the workplace lot.</p>
+  <div class="meta">
+    <span>Working name — rename freely</span>
+    <span>Research date: 11 Sep 2026</span>
+    <span>All references opened and cross-checked (see §13)</span>
+  </div>
+</header>
+
+<div class="tldr">
+  <div class="eyebrow">Read this first</div>
+  <p><strong>The problem is not that grids are dirty. It is that EV charging happens at the wrong time by default.</strong> 72% of home sessions start the moment the plug goes in; fewer than 26% of drivers ever schedule. Meanwhile California threw away 3.4 TWh of mostly-solar electricity in 2024 because nobody was there to use it at noon.</p>
+  <p><strong>Root cause:</strong> nobody captures the one piece of information that unlocks flexibility — <em>when the driver needs the car</em> — and the products that do exist optimise overnight home charging for utilities, broadcast one “green” signal to everyone (which the newest research shows can backfire), and never make the result legible to the person plugging in.</p>
+  <p><strong>Solution:</strong> ask one question at plug-in (“When do you leave?”), let a site-level optimiser allocate power across every connector every five minutes to minimise marginal carbon and tariff cost inside the site’s power limit, guarantee the car is ready on time, and show the driver one honest number: money and CO₂ saved versus charging immediately.</p>
+  <p class="claim">ev.energy, Optiwatt, WeaveGrid and Octopus optimise <em>overnight home charging for the utility</em>. Noonshift optimises the <em>daytime workplace lot for the site owner</em> — 8 hours of dwell, ~8 kWh of need, and a midday solar surplus the grid is currently curtailing.</p>
+</div>
+
+<div class="toolbar">
+  <button type="button" id="expandAll">Expand all</button>
+  <button type="button" id="collapseAll">Collapse all</button>
+</div>
+
+<ul class="toc">
+  <li><a href="#s1">1 Problem</a></li><li><a href="#s2">2 Root cause</a></li><li><a href="#s3">3 Solution</a></li>
+  <li><a href="#s4">4 Evidence</a></li><li><a href="#s5">5 Novelty</a></li><li><a href="#s6">6 Existing solutions</a></li>
+  <li><a href="#s7">7 Comparison</a></li><li><a href="#s8">8 Stack &amp; architecture</a></li><li><a href="#s9">9 Edge cases</a></li>
+  <li><a href="#s10">10 Limitations</a></li><li><a href="#s11">11 Pressure test</a></li><li><a href="#s12">12 How we got here</a></li><li><a href="#s13">13 References</a></li>
+</ul>
+
+<!-- 1 -->
+<details id="s1" open>
+<summary><span class="num">01</span><h2>The problem statement</h2><span class="chev">›</span></summary>
+<div class="body">
+<p><strong>Given:</strong> As EV adoption grows, charging stations draw power regardless of whether the grid is running on renewables or fossil fuels at that moment. Build a platform that helps charging network operators <em>schedule and price</em> sessions to align with high-renewable periods, and gives drivers <em>real-time visibility</em> into the greenness of their session. Users: operators, drivers, grid operators.</p>
+<h3>What “aligning with renewables” physically means</h3>
+<p>You cannot pick which electrons you get. A charger draws from the whole grid mix at that instant. The only lever a charging operator has is <strong>when</strong> and <strong>how hard</strong> each connector draws. “Green charging” is therefore a <em>timing</em> claim: you moved a kWh from a moment when adding load would have spun up a gas turbine to a moment when it would have absorbed solar that was otherwise curtailed.</p>
+<p>That reframing matters. It means the platform is a <strong>scheduler under constraints</strong> — not a dashboard, and not a certificate generator.</p>
+</div>
+</details>
+
+<!-- 2 -->
+<details id="s2" open>
+<summary><span class="num">02</span><h2>The root cause — where, why, how, what</h2><span class="chev">›</span></summary>
+<div class="body">
+
+<figure aria-label="Illustrative daily curves: grid carbon intensity dips at midday; uncontrolled charging peaks in the evening; workplace dwell spans the clean window.">
+<svg viewBox="0 0 720 270" role="img">
+  <defs>
+    <style>
+      .ax{stroke:var(--ink-3);stroke-width:1}
+      .lbl{font-family:"IBM Plex Mono",monospace;font-size:11px;fill:var(--ink-2)}
+      .ttl{font-family:"IBM Plex Sans",sans-serif;font-size:12px;fill:var(--ink)}
+      .ci{fill:none;stroke:var(--fossil);stroke-width:2.5}
+      .home{fill:var(--danger);opacity:.28}
+      .dwell{fill:var(--accent);opacity:.16}
+      .sop{fill:var(--accent);opacity:.34}
+    </style>
+  </defs>
+  <!-- bands: x = 50 + h*26 -->
+  <rect class="dwell" x="258" y="30" width="234" height="190"/>
+  <rect class="sop" x="284" y="30" width="130" height="190"/>
+  <!-- uncontrolled home charging hump: evening 17-24 + 0-2 -->
+  <path class="home" d="M50,220 L50,190 C70,175 90,180 102,215 L102,220 Z"/>
+  <path class="home" d="M492,220 C520,200 560,120 600,110 C640,100 670,150 674,180 L674,220 Z"/>
+  <!-- carbon intensity curve -->
+  <path class="ci" d="M50,80 C110,78 170,85 230,95 C270,102 300,150 336,160 C362,168 390,162 414,140 C450,110 500,60 560,52 C610,46 650,60 674,70"/>
+  <!-- axes -->
+  <line class="ax" x1="50" y1="220" x2="674" y2="220"/>
+  <line class="ax" x1="50" y1="30" x2="50" y2="220"/>
+  <text class="lbl" x="50" y="238">00:00</text>
+  <text class="lbl" x="206" y="238">06:00</text>
+  <text class="lbl" x="362" y="238">12:00</text>
+  <text class="lbl" x="518" y="238">18:00</text>
+  <text class="lbl" x="646" y="238">24:00</text>
+  <text class="lbl" x="8" y="60" transform="rotate(-90 8,60)" text-anchor="end">gCO₂/kWh · kW</text>
+  <!-- legends -->
+  <text class="ttl" x="56" y="22">Grid carbon intensity (marginal), spring weekday shape</text>
+  <text class="lbl" x="292" y="48">super-off-peak 09–14</text>
+  <text class="lbl" x="264" y="212">workplace dwell 08–17</text>
+  <text class="lbl" x="560" y="200">uncontrolled home charging</text>
+  <text class="lbl" x="200" y="262">Illustrative shapes, not measured data. Bands: PG&amp;E BEV super-off-peak window; typical workplace dwell.</text>
+</svg>
+<figcaption>The mismatch in one picture: the clean hours are midday (solar), the default charging hours are evening and overnight (gas), and the cars are already parked in the clean window — at work.</figcaption>
+</figure>
+
+<h3>Where the mismatch lives</h3>
+<div class="grid2">
+  <div class="tile"><h4>In time</h4><p>Solar peaks 09–15. Default charging starts at plug-in — 17:00–23:00 at home, exactly when the evening ramp is met by gas. CAISO must keep gas online through the day for reliability and ramping, then curtails solar at noon <a href="#r6">[6]</a>.</p></div>
+  <div class="tile"><h4>In place</h4><p>Most managed-charging products run at home, overnight, via utility programs. The site type with the most idle plugged-in hours <em>during</em> the solar window — workplaces, campuses, depots — is where the products aren’t <a href="#r2">[2]</a>.</p></div>
+  <div class="tile"><h4>In the price signal</h4><p>Retail off-peak windows were designed for a different grid. Octopus Intelligent Go’s off-peak is 23:30–05:30 <a href="#r22">[22]</a>. Price ≠ carbon in most tariffs. (California’s commercial BEV rate is the exception that proves the point: its super-off-peak is 09:00–14:00 <a href="#r12">[12]</a>.)</p></div>
+  <div class="tile"><h4>In the carbon signal</h4><p>Most “% renewable” displays use the <em>average</em> mix. A decision to add load is governed by the <em>marginal</em> generator. And when a large fleet follows the same marginal signal, the signal itself breaks <a href="#r3">[3]</a>.</p></div>
+</div>
+
+<h3>Why it persists — four root causes</h3>
+<ol>
+  <li><strong>Default behaviour is “charge now”.</strong> 72% of home sessions begin immediately at plug-in; fewer than 26% involve any deliberate scheduling, even under time-of-use tariffs (Rivian telematics, 2023 data) <a href="#r1">[1]</a>. Behaviour-change products fail here by construction.</li>
+  <li><strong>Nobody captures flexibility.</strong> The single fact that turns a car into a shiftable load — departure time — is not asked for at most chargers. Without it an operator cannot delay anything without risk of stranding someone, so it delays nothing.</li>
+  <li><strong>Incentives point the wrong way.</strong> Utilities fund overnight home programs; workplace chargers bill per kWh or per hour, so flexibility has no price. Operators are paid to deliver energy, not to deliver it at the right moment.</li>
+  <li><strong>The “green signal” approach has a scale ceiling.</strong> Martin, Powell &amp; Rajagopal (Nature Communications, Dec 2025) show that managing charging with average or marginal emissions factors <em>can increase</em> emissions when the signal is noisy, when too many EVs follow the same signal, or when coal responds. Plain marginal signals turn net-negative beyond ~1.5 M EVs in their Western-US model; they advise against them beyond ~500 k vehicles <a href="#r3">[3]</a>. Every incumbent broadcasts one signal.</li>
+</ol>
+
+<h3>How it shows up</h3>
+<ul>
+  <li>CAISO curtailed <strong>3.4 TWh</strong> in 2024 (+29% year on year; 93% solar; concentrated in spring midday). Solar covers almost half of demand 08:00–16:00, yet gas stays online for evening ramp <a href="#r6">[6]</a>. Batteries are eating into it — curtailment fell from 13% to 11.5% of solar generation in early 2025 — but absolute volume still rose <a href="#r7">[7]</a>.</li>
+  <li>Under forecast adoption, peak net demand in the Western Interconnection rises up to <strong>25%</strong>; home-centred, locally-optimised charging <em>strains</em> the grid, while shifting to daytime charging reduces storage need, excess renewable generation, ramping and emissions <a href="#r2">[2]</a>.</li>
+  <li>A workplace car dwells 8–10 h and needs 7–10 kWh — about 1–1.5 h of charging at 7 kW. Roughly 85% of the plugged-in time is idle flexibility that nobody uses <a href="#r18">[18]</a>.</li>
+</ul>
+
+<h3>What must change (the design brief that falls out)</h3>
+<ul>
+  <li>Capture the deadline at plug-in, with a zero-effort default.</li>
+  <li>Put the optimiser where the flexibility is: daytime, long-dwell, multi-connector sites.</li>
+  <li>Optimise <em>centrally per site</em> under the site’s real power limit — never broadcast a signal for thousands of independent actors to chase.</li>
+  <li>Make the outcome visible and honest to the driver, and bankable to the site owner.</li>
+</ul>
+</div>
+</details>
+
+<!-- 3 -->
+<details id="s3">
+<summary><span class="num">03</span><h2>The proposed solution</h2><span class="chev">›</span></summary>
+<div class="body">
+<p><strong>Noonshift</strong> is a charging-operator-side scheduling layer plus a thin driver app. It sits between the charging management system and the chargers (via OCPP), takes one input from the driver, and decides every five minutes how much power each connector gets.</p>
+
+<h3>The six parts (after pressure-testing, §11)</h3>
+<div class="tablewrap"><table>
+<thead><tr><th style="width:12%">Part</th><th>What it does</th><th style="width:22%">Hackathon status</th></tr></thead>
+<tbody>
+<tr><td><b>A · Plug-in</b></td><td>One question: <em>“When do you leave?”</em> Default pre-filled from the driver’s history (20th-percentile of past dwell — conservative) or read from the car via ISO 15118 <code>ChargingNeeds.departureTime</code> / <code>energyAmount</code> where supported <a href="#r13">[13]</a>. One optional toggle: <em>“Need it sooner? Boost”</em> at a premium. No lanes, no tiers, no jargon. The default is the cheapest.</td><td><span class="tag ok">build</span></td></tr>
+<tr><td><b>B · Site scheduler</b></td><td>A linear program re-solved every 5 min over a 24–48 h horizon. Minimises forecast <em>marginal</em> CO₂ and tariff cost, keeps the site inside its power limit and tariff kW block, guarantees each car’s energy by its deadline, and never fails (elastic constraints — see the box below).</td><td><span class="tag ok">build — this is the product</span></td></tr>
+<tr><td><b>C · Anti-herding</b></td><td>Within a site there is exactly one decision-maker, so there is nothing to herd: no signal is broadcast to humans. Across many sites, each site’s plan is added to a shared “committed load” curve that later sites see, so they don’t all pile into the same 5-min trough — a cheap approximation of the paper’s Cascading MEF. The full method (re-running grid dispatch per cohort) needs a grid operator’s model and is roadmap.</td><td><span class="tag warn">one slide + roadmap</span></td></tr>
+<tr><td><b>D · Driver view</b></td><td>Live: a simple “grid is cleaner than X% of today” bar and the plan (“charging 11:10–12:40, ready by 17:00”). At the end, one receipt: <em>“You saved $X and Y kg CO₂ vs charging at plug-in”</em> — an estimate from WattTime marginal data, labelled as such, with the method one tap away. Not a certificate.</td><td><span class="tag ok">build</span></td></tr>
+<tr><td><b>E · Operator dashboard</b></td><td>Site kW vs limit and tariff block, per-connector Gantt of planned vs actual, carbon and cost vs the “charge immediately” baseline, live re-solve pulse, deadline-risk alerts.</td><td><span class="tag ok">build</span></td></tr>
+<tr><td><b>F · Grid interface</b></td><td>Aggregated shiftable-kW forecast per site; OpenADR 3.0 endpoint to receive demand-response events; OCPI 2.2.1 for roaming tariffs/charging profiles <a href="#r14">[14]</a>.</td><td><span class="tag">stub — “designed, not wired”</span></td></tr>
+</tbody></table></div>
+
+<h3>The scheduler, in plain terms</h3>
+<p>Time is cut into 5-minute slots. For every plugged-in car <em>i</em> and slot <em>t</em> the optimiser picks a power level <em>p<sub>i,t</sub></em>. It minimises:</p>
+<pre><code>Σ_i Σ_t  p[i,t]·Δ · ( w_c · MOER[t]  +  w_$ · tariff[t] )      # carbon + energy cost
+ + w_peak · P_over                                           # exceeding the site's tariff kW block
+ + M · Σ_i shortfall[i]                                      # (large M) never fail, degrade gracefully
+ + μ · Σ_t committed[t] · Σ_i p[i,t]                          # multi-site only: avoid piling into one trough
+
+subject to, for every car i and slot t in [arrival_i, departure_i):
+  Σ_t p[i,t]·Δ + shortfall[i]  ≥  E_need[i]                  # energy by deadline (elastic)
+  Σ_{τ≤t} p[i,τ]·Δ  ≥  α · E_need[i] · (t−arrival_i)/(departure_i−arrival_i)
+                                                             # progress floor, α≈0.5: fairness + early-unplug safety
+  p[i,t] = p_max[i]  for the last 30 min before departure_i while energy remains   # unconditional sprint
+  0 ≤ p[i,t] ≤ p_max[i]  (p_max set on the charger by the operator, outside the optimiser)
+  Σ_i p[i,t]  ≤  P_site − P_building[t]                      # live site limit incl. building load
+  Σ_i p[i,t] − P_over  ≤  P_block                            # tariff subscription block</code></pre>
+<ul>
+  <li><strong>Size:</strong> 40 connectors × 288 slots ≈ 11.5 k variables. HiGHS (via <code>scipy.optimize.linprog</code>) solves this in well under a second. Re-solving every 5 min — and immediately on any event (new plug-in, Boost, deadline edit) — is what absorbs forecast error and battery taper.</li>
+  <li><strong>Minimum current:</strong> EVs cannot charge below 6 A (IEC 61851). After solving, allocations between 0 and 6 A are rounded up to 6 A rather than paused, because some EVs do not resume after a pause.</li>
+  <li><strong>Why elastic:</strong> an oversubscribed lot (too many late arrivals, small site limit) has no exact solution. The shortfall slack lets the solver return the best proportional plan instead of crashing, and the affected drivers get a revised ETA plus the Boost option.</li>
+  <li><strong>Why “progress floor”:</strong> one constraint does two jobs. It formalises fairness (no car starves while others charge) and protects drivers who leave early (they always have at least α of the pro-rata energy).</li>
+</ul>
+
+<h3>Who pays</h3>
+<ul>
+  <li><strong>The site owner</strong> — the payer the incumbents don’t serve. PG&amp;E’s Business EV rate has a 09:00–14:00 super-off-peak, a 16:00–21:00 peak, and bills by subscribed kW blocks instead of demand charges <a href="#r12">[12]</a>. The scheduler’s carbon term and cost term pull the same direction, and “stay inside the kW block” is a real dollar. The demo prints the site’s monthly bill delta vs charge-immediately.</li>
+  <li><strong>Utility managed-charging payments</strong> where they exist (precedent: Ava Community Energy pays Optiwatt users $75 + $25/yr; target 5,000 vehicles) <a href="#r21">[21]</a>.</li>
+  <li><strong>Drivers pay nothing extra by default.</strong> Green is the wrapper, not the price. Boost is the only premium.</li>
+  <li><strong>Later:</strong> demand-response revenue through the OpenADR endpoint; hourly-matched clean-energy reporting for corporate fleets (EnergyTag granular certificates — first issuers accredited June 2025 <a href="#r15">[15]</a>).</li>
+</ul>
+
+<h3>Grid signals: a region adapter, not a vendor lock</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Source</th><th>What</th><th>Resolution / forecast</th><th>Free tier</th><th>Role in Noonshift</th></tr></thead>
+<tbody>
+<tr><td>WattTime <a href="#r8">[8]</a></td><td>Marginal operating emissions rate (MOER), 210+ countries</td><td>5-min · 72 h rolling forecast</td><td>Basic plan: all signals for <code>CAISO_NORTH</code>, 2+ yrs history</td><td><b>Primary</b> optimisation signal for the California demo</td></tr>
+<tr><td>gridstatus (open source) <a href="#r11">[11]</a></td><td>CAISO fuel mix, load, prices, renewable curtailment</td><td>5-min actuals</td><td>Free</td><td>Average-mix display, curtailment overlay, price</td></tr>
+<tr><td>Electricity Maps <a href="#r9">[9]</a></td><td>Flow-traced average carbon intensity, 200+ zones</td><td>Hourly/15-min · 72 h forecast (paid)</td><td>1 zone, 50 req/h, no forecast</td><td>Reporting signal; other regions (incl. India zones)</td></tr>
+<tr><td>NESO Carbon Intensity API <a href="#r10">[10]</a></td><td>GB carbon intensity + mix, 14 DNO regions</td><td>30-min · 96 h+ forecast</td><td>Free, no auth, CC BY 4.0</td><td>UK deployments</td></tr>
+</tbody></table></div>
+<p class="note">Signal and sessions must be from the same grid. The demo uses California sessions (ACN-Data, Caltech/JPL) with California signals (WattTime CAISO_NORTH + CAISO via gridstatus). An early draft paired a UK signal with California sessions — the pressure test caught it (§11).</p>
+</div>
+</details>
+
+<!-- 4 -->
+<details id="s4">
+<summary><span class="num">04</span><h2>Why this solution — every decision traced to evidence</h2><span class="chev">›</span></summary>
+<div class="body">
+<div class="tablewrap"><table>
+<thead><tr><th style="width:30%">Design decision</th><th>Evidence</th><th style="width:10%">Ref</th></tr></thead>
+<tbody>
+<tr><td>Zero-decision default; the only input is a deadline</td><td>72% charge immediately at plug-in; &lt;26% ever schedule. Products that require behaviour change lose most of the market on day one. Caltech’s ACN system has asked users for departure time and kWh via app since 2018 — the UX has real-world precedent.</td><td><a href="#r1">[1]</a> <a href="#r16">[16]</a></td></tr>
+<tr><td>Wedge = daytime long-dwell sites, not homes</td><td>Daytime charging reduces storage, curtailment, ramping and emissions vs home-overnight (Western US, 2035 dispatch). Workplace dwell 8–10 h for 7–10 kWh. Curtailment is midday.</td><td><a href="#r2">[2]</a> <a href="#r18">[18]</a> <a href="#r6">[6]</a></td></tr>
+<tr><td>Central per-site optimisation; no broadcast signal</td><td>Broadcast average/marginal signals can increase emissions at scale; the fix is differentiated, group-wise signals. A single site has one actor — herding is avoided structurally.</td><td><a href="#r3">[3]</a></td></tr>
+<tr><td>Marginal signal for decisions; average for reporting</td><td>Adding load moves the marginal generator, not the average. Location- vs market-based accounting can overstate savings by up to 55%. Show one honest number, label the method.</td><td><a href="#r3">[3]</a> <a href="#r4">[4]</a> <a href="#r5">[5]</a></td></tr>
+<tr><td>Co-optimise carbon and tariff; site owner pays</td><td>PG&amp;E BEV: super-off-peak 09–14, peak 16–21, kW subscription blocks. Carbon and cost align midday in California, so the scheduler earns money while cutting emissions.</td><td><a href="#r12">[12]</a></td></tr>
+<tr><td>Green is the wrapper, not a premium lane</td><td>Stated willingness to pay for green electricity ≈ $0.06/kWh, but drivers dislike long deferral windows; a “green lane” that means “slower” loses. At work, the deadline is the window anyway.</td><td><a href="#r20">[20]</a></td></tr>
+<tr><td>Elastic LP + progress floor + 30-min sprint</td><td>Real workplace schedulers have to operate without knowing SoC or exact departure (Google campus study); trust collapses on the first stranded driver. Guarantees must be constraints, not hopes.</td><td><a href="#r19">[19]</a></td></tr>
+<tr><td>OCPP 1.6J today, 2.0.1 / ISO 15118 when present</td><td>SetChargingProfile exists in 1.6; 2.0.1 adds native <code>ChargingNeeds</code> (departure time, energy). Python library supports both.</td><td><a href="#r13">[13]</a> <a href="#r17">[17]</a></td></tr>
+<tr><td>Region adapter for signals</td><td>Free tiers differ sharply (WattTime: CAISO_NORTH only; Electricity Maps: 1 zone, no forecast; NESO: fully open). One internal signal schema, many sources.</td><td><a href="#r8">[8]</a> <a href="#r9">[9]</a> <a href="#r10">[10]</a></td></tr>
+</tbody></table></div>
+</div>
+</details>
+
+<!-- 5 -->
+<details id="s5">
+<summary><span class="num">05</span><h2>What is genuinely new — and what we don’t claim</h2><span class="chev">›</span></summary>
+<div class="body">
+<p>Every individual ingredient exists somewhere. The combination, the placement, and the honesty are the contribution.</p>
+<h3>Defensible firsts (we found no product doing these — stated as “not found”, not “does not exist”)</h3>
+<ol>
+  <li><strong>Deadline-elastic, marginal-carbon-aware, site-constrained allocation at public/workplace chargers.</strong> Incumbent CPO platforms (Driivz, Ampcontrol, Monta) optimise site load and cost, some with a CO₂ preference; utility programs (ev.energy, Optiwatt, WeaveGrid) optimise single home cars via telematics. None we found do all three — deadline, marginal carbon, hard site limit — in one solver at a multi-connector daytime site.</li>
+  <li><strong>Herding-aware by architecture.</strong> The Dec-2025 finding that broadcast signals backfire is new enough that no incumbent has responded to it. Noonshift never broadcasts; multi-site plans see each other’s committed load.</li>
+  <li><strong>The counterfactual receipt.</strong> Not “you charged on 62% renewables” (an average that would have been true if you’d done nothing) but “versus charging at plug-in, this session avoided X kg CO₂ and $Y” — the only number that measures what the product did.</li>
+</ol>
+<h3>What we explicitly do not claim</h3>
+<ul>
+  <li>Not “100% renewable charging”. Electrons are not attributable; this is a timing claim with an estimated impact.</li>
+  <li>Not a solution to grid-scale herding on our own. That needs an aggregator and a grid operator’s dispatch model (the paper’s full method). We avoid causing it and leave the hook in.</li>
+  <li>Not a certificate. The receipt is an estimate from a third-party marginal model. Accredited hourly certificates (EnergyTag) are a roadmap integration, not a feature.</li>
+  <li>Not for DC fast charging. A driver waiting 30 minutes has no flexibility to sell; we show greenness there for awareness only.</li>
+</ul>
+</div>
+</details>
+
+<!-- 6 -->
+<details id="s6">
+<summary><span class="num">06</span><h2>Existing solutions — what they do, what they lack, why</h2><span class="chev">›</span></summary>
+<div class="body">
+<div class="tablewrap"><table>
+<thead><tr><th>Product</th><th>What it does</th><th>Signal</th><th>Where it lives</th><th>What it lacks — and why</th></tr></thead>
+<tbody>
+<tr><td><b>ev.energy</b> <a href="#r8">[8]</a></td><td>Utility managed-charging programs; ~120 k drivers shift home charging with WattTime AER</td><td>Marginal (WattTime)</td><td>Home, overnight, via utility</td><td>Utility-territory-bound; home only; broadcast signal to all enrolled cars. Why: funded by utility DR budgets that target residential peaks.</td></tr>
+<tr><td><b>Optiwatt</b> <a href="#r21">[21]</a></td><td>Consumer app + utility programs via OEM telematics; Ava program pays $75 + $25/yr</td><td>Price/off-peak, “renewable times”</td><td>Home, via car API</td><td>Single-car optimisation; no site power constraint; depends on OEM telematics access. Why: no charger in the loop.</td></tr>
+<tr><td><b>WeaveGrid</b></td><td>Utility↔OEM orchestration incl. distribution-level constraints, V2H</td><td>Utility-defined</td><td>Home, via OEM</td><td>Not for public/workplace CPOs; no driver-facing greenness. Why: sells to utilities.</td></tr>
+<tr><td><b>Octopus Intelligent Go</b> <a href="#r22">[22]</a></td><td>Tariff-led smart charging: 23:30–05:30 off-peak plus up to 6 h scheduled “when greenest”</td><td>Tariff + grid</td><td>Home, UK</td><td>Overnight by design; supplier-locked. Why: a retail tariff product.</td></tr>
+<tr><td><b>Monta SmartCharge</b> <a href="#r23">[23]</a></td><td>CPMS with a user preference slider: cost / CO₂ / renewable share</td><td>Average mix</td><td>Own chargers, mostly home/SME</td><td>User must choose settings; average not marginal; no counterfactual; no herding awareness. Why: preference-driven UX.</td></tr>
+<tr><td><b>Driivz / Ampcontrol</b> <a href="#r23">[23]</a></td><td>CPO / fleet-depot energy management: dynamic load balancing, cost, on-site PV</td><td>Cost, site limits</td><td>Depots, CPOs</td><td>Carbon is secondary or absent; no driver-facing greenness; no deadline capture from public drivers. Why: sold on OPEX and uptime.</td></tr>
+<tr><td><b>Tesla Charge on Solar</b></td><td>Charge from the owner’s own rooftop surplus</td><td>Local PV export</td><td>Home with Powerwall</td><td>Own-roof only; ignores grid state. Why: a home-energy feature.</td></tr>
+<tr><td><b>WattTime / Electricity Maps / NESO</b> <a href="#r8">[8]</a> <a href="#r9">[9]</a> <a href="#r10">[10]</a></td><td>Signal providers (data APIs)</td><td>Marginal / average</td><td>APIs</td><td>Not schedulers. They tell you when; someone still has to decide who, how much, within what limit.</td></tr>
+</tbody></table></div>
+<p class="note">Pattern: the incumbents split into <em>home programs for utilities</em> (right signal, wrong site), <em>CPO cost optimisers</em> (right site, wrong objective), and <em>data providers</em> (right data, no control). The daytime multi-connector site optimised for carbon <em>and</em> the site owner’s bill is the empty square.</p>
+</div>
+</details>
+
+<!-- 7 -->
+<details id="s7">
+<summary><span class="num">07</span><h2>Noonshift vs the incumbents</h2><span class="chev">›</span></summary>
+<div class="body">
+<div class="tablewrap"><table>
+<thead><tr><th>Capability</th><th>Noonshift</th><th>ev.energy</th><th>Optiwatt</th><th>Octopus IOG</th><th>Monta</th><th>Driivz / Ampcontrol</th></tr></thead>
+<tbody>
+<tr><td>Daytime workplace / destination sites</td><td class="yes">Yes — the wedge</td><td class="no">Home</td><td class="no">Home</td><td class="no">Home</td><td class="part">Partly</td><td class="yes">Depots</td></tr>
+<tr><td>Deadline captured at plug-in (zero-effort default)</td><td class="yes">Yes</td><td class="part">App schedule</td><td class="part">App schedule</td><td class="part">App schedule</td><td class="part">Settings</td><td class="part">Fleet timetable</td></tr>
+<tr><td>Marginal emissions in the objective</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">—</td><td class="part">Supplier grid</td><td class="no">Average</td><td class="no">—</td></tr>
+<tr><td>Hard site power limit + tariff kW block</td><td class="yes">Yes</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="yes">Load balancing</td><td class="yes">Yes</td></tr>
+<tr><td>Guaranteed ready-by (elastic, progress floor, sprint)</td><td class="yes">Yes, formal</td><td class="part">Ready-by time</td><td class="part">Ready-by time</td><td class="part">Ready-by time</td><td class="part">Schedule</td><td class="yes">Departure-driven</td></tr>
+<tr><td>Herding-aware (no broadcast signal; committed-load sharing)</td><td class="yes">By design</td><td class="no">Broadcast</td><td class="no">Broadcast</td><td class="no">Broadcast</td><td class="no">—</td><td class="no">—</td></tr>
+<tr><td>Driver sees counterfactual saving (vs charge-now)</td><td class="yes">Yes</td><td class="part">Impact stats</td><td class="part">Savings</td><td class="part">Bill</td><td class="part">CO₂ shown</td><td class="no">—</td></tr>
+<tr><td>Payer</td><td class="yes">Site owner</td><td>Utility</td><td>Utility</td><td>Supplier</td><td>Charger owner</td><td>Fleet/CPO</td></tr>
+<tr><td>Open protocols (OCPP profiles, OpenADR 3.0, OCPI)</td><td class="yes">OCPP now; others stubbed</td><td class="no">Telematics</td><td class="no">Telematics</td><td class="part">Own charger/API</td><td class="yes">OCPP, OCPI</td><td class="yes">OCPP</td></tr>
+</tbody></table></div>
+<p class="small">Cells reflect public product descriptions as of 11 Sep 2026; “Partly” means the capability exists in a weaker or user-driven form. Verify against current documentation before putting a competitor’s name on a slide.</p>
+</div>
+</details>
+
+<!-- 8 -->
+<details id="s8">
+<summary><span class="num">08</span><h2>Tech stack &amp; system architecture</h2><span class="chev">›</span></summary>
+<div class="body">
+<h3>Data flow</h3>
+<div class="arch">
+  <div class="box"><b>Grid signals</b>WattTime MOER (5-min, 72 h fcst) · gridstatus CAISO mix/curtailment/price · Electricity Maps · NESO</div>
+  <div class="box"><b>Tariff</b>PG&amp;E BEV time bands + kW block (static table)</div>
+  <div class="box"><b>Sessions</b>Plug-in event, deadline, kWh need (app / ISO 15118 / learned default)</div>
+  <div class="box"><b>Site meters</b>Building load, per-connector meter values (OCPP MeterValues)</div>
+</div>
+<div class="arrow">↓ all four feed ↓</div>
+<div class="arch">
+  <div class="box core"><b>Scheduler</b>Elastic LP (scipy / HiGHS) · re-solve every 5 min + on event · outputs per-connector kW profile</div>
+  <div class="box core"><b>Impact engine</b>Metered kWh × MOER per slot vs charge-now baseline → $ and kg CO₂</div>
+  <div class="box core"><b>OCPP gateway</b>mobilityhouse/ocpp · 1.6J SetChargingProfile (TxProfile) · 2.0.1 ChargingNeeds</div>
+</div>
+<div class="arrow">↓ serves ↓</div>
+<div class="arch">
+  <div class="box"><b>Driver PWA</b>One question · plan · live cleanliness bar · receipt</div>
+  <div class="box"><b>Operator dashboard</b>kW vs limit/block · Gantt · savings vs baseline · alerts</div>
+  <div class="box"><b>Grid API (stub)</b>Shiftable-kW forecast · OpenADR 3.0 VEN · OCPI 2.2.1</div>
+  <div class="box"><b>Charger simulator</b>40 OCPP 1.6J connectors replaying ACN-Data sessions</div>
+</div>
+
+<h3>Stack</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>API</td><td>Python 3.12 · FastAPI · WebSockets</td><td>Same language as the solver and the OCPP library; REST matches the brief.</td></tr>
+<tr><td>Optimiser</td><td><code>scipy.optimize.linprog</code> (HiGHS)</td><td>Already a dependency; 11 k-variable LP solves in &lt;1 s. No custom solver, no ML needed to ship.</td></tr>
+<tr><td>Charger protocol</td><td><code>mobilityhouse/ocpp</code> (1.6 + 2.0.1) <a href="#r17">[17]</a></td><td>Mature Python implementation; lets us run a CSMS and a fleet of simulated chargers in-process.</td></tr>
+<tr><td>Grid data</td><td>WattTime API (Basic) · <code>gridstatus</code> <a href="#r11">[11]</a></td><td>Free, California, marginal + actual mix + curtailment + price. Region adapters for Electricity Maps / NESO.</td></tr>
+<tr><td>Sessions</td><td>ACN-Data via <code>acnportal</code> <a href="#r16">[16]</a></td><td>30 k+ real workplace sessions (Caltech/JPL, 2018–2020) with arrival, departure, kWh, and user-stated departure inputs.</td></tr>
+<tr><td>Storage</td><td>PostgreSQL (+ TimescaleDB if time allows) · Redis for live state</td><td>Time-series of slots, plans, meter values; Redis pub/sub for dashboard updates.</td></tr>
+<tr><td>Front-end</td><td>React (Vite) dashboard · PWA driver app</td><td>One code base; PWA avoids app-store friction for a demo.</td></tr>
+<tr><td>Ops</td><td>Docker Compose</td><td>One command brings up API, DB, simulator, front-ends.</td></tr>
+</tbody></table></div>
+
+<h3>Key interfaces</h3>
+<pre><code>POST /sessions            {connector_id, departure_at, kwh_needed?}  → plan, eta, price
+POST /sessions/{id}/boost                                            → re-solve now, premium applied
+GET  /sessions/{id}/live  → {kw_now, grid_percentile, kwh_delivered, saved_usd, saved_kgco2}
+GET  /sites/{id}/plan     → per-connector 5-min kW profile, 24–48 h
+GET  /sites/{id}/impact?from&to   → kWh, $ and kgCO₂ vs charge-immediately baseline
+GET  /grid/flex-forecast  → [{hour, shiftable_kw}]        (stub)
+POST /openadr/events      → accept DR event, re-solve      (stub)</code></pre>
+
+<h3>48-hour build order</h3>
+<ol>
+  <li><kbd class="step">h 0–6</kbd> Load ACN-Data for one site; pull WattTime CAISO_NORTH history; write the LP; print bill and CO₂ delta vs charge-immediately for one day. <em>If this number isn’t compelling, stop and rethink.</em></li>
+  <li><kbd class="step">h 6–16</kbd> FastAPI + Postgres; OCPP 1.6J simulator with 40 connectors replaying sessions; scheduler loop pushing SetChargingProfile.</li>
+  <li><kbd class="step">h 16–30</kbd> Operator dashboard (kW vs limit, Gantt, savings) and driver PWA (one question, plan, receipt).</li>
+  <li><kbd class="step">h 30–40</kbd> Demo scripts: (a) early unplug still hits deadline; (b) oversubscribed lot degrades gracefully with ETAs; (c) signal API outage falls back to cached forecast.</li>
+  <li><kbd class="step">h 40–48</kbd> Stub grid endpoints, README, pitch: one-line claim, one comparison slide, one honest herding slide.</li>
+</ol>
+</div>
+</details>
+
+<!-- 9 -->
+<details id="s9">
+<summary><span class="num">09</span><h2>Edge cases and failure modes</h2><span class="chev">›</span></summary>
+<div class="body">
+<div class="tablewrap"><table>
+<thead><tr><th style="width:30%">Case</th><th>Handling</th></tr></thead>
+<tbody>
+<tr><td>Driver gives no departure time</td><td>Default = 20th percentile of that driver’s past dwell at this site; else site default (e.g. 17:00). Editable any time; edits trigger an immediate re-solve.</td></tr>
+<tr><td>Driver leaves earlier than stated</td><td>Progress floor (α≈0.5) guarantees at least half of pro-rata energy at any moment. Receipt states the shortfall honestly.</td></tr>
+<tr><td>Driver needs it sooner</td><td>Boost: the session gets max power now at a premium; re-solve reallocates everyone else. Boost ≥ standard price, so “claim late, then boost” has no free lunch.</td></tr>
+<tr><td>Oversubscribed site (deadlines + site limit infeasible)</td><td>Elastic LP distributes shortfall proportionally (earliest deadline first as tie-break); affected drivers get a revised ETA and the Boost option. The solver never errors.</td></tr>
+<tr><td>Forecast is wrong</td><td>Receding horizon: every 5 min the plan is re-solved with fresh actuals. The carbon term only ever moves energy <em>within</em> the deadline; it can never make a car late.</td></tr>
+<tr><td>Signal API down</td><td>Use cached 72 h forecast. If stale &gt; 6 h, drop to tariff-only optimisation (static table). If no tariff, deadline-only (earliest-deadline-first).</td></tr>
+<tr><td>Backend unreachable from chargers</td><td>Chargers’ default profile = full power (fail-open to charging). Wrong outcome for carbon, right outcome for the driver.</td></tr>
+<tr><td>Site power limit / hardware safety</td><td>Per-connector max current is configured on the charger by the operator, <em>outside</em> the optimiser; the LP can only choose within it. A software bug can delay charging, never exceed hardware limits.</td></tr>
+<tr><td>EV that won’t resume after pause</td><td>Active sessions are throttled to the 6 A minimum, never to 0 A. Detected via MeterValues; flagged per vehicle.</td></tr>
+<tr><td>Battery taper near full</td><td>The car draws less than allocated; the next re-solve sees the measured kW and hands the slack to other connectors. This is why we re-plan rather than pre-plan.</td></tr>
+<tr><td>Building load spike</td><td>Site limit uses the live building meter; EV load is the flexible part and is reduced first.</td></tr>
+<tr><td>Many sites on one platform (herding)</td><td>Committed-load penalty (μ term) spreads sites across troughs. At aggregator scale (&gt;500 k EVs) the published Cascading MEF method with a grid operator’s dispatch model is the correct tool <a href="#r3">[3]</a>.</td></tr>
+<tr><td>Chargers on OCPP 1.6 without smart-charging support</td><td>Fall back to RemoteStart/Stop in 15-min blocks (coarse) and flag the site as “limited control”.</td></tr>
+<tr><td>Privacy (departure times, ISO 15118 vehicle data)</td><td>Store pseudonymised session records; keep only what the scheduler needs; no location history; aggregate before anything reaches a grid-operator endpoint.</td></tr>
+<tr><td>Billing rules (kWh-based metering laws, e.g. Germany’s Eichrecht, California CTEP)</td><td>Boost/standard must be expressed as per-kWh rates that vary by time or option, not flat fees. <span class="tag warn">verify per jurisdiction</span></td></tr>
+<tr><td>DC fast charging</td><td>Out of scope for shifting; show live greenness only. Battery-buffered fast chargers are the future hook.</td></tr>
+</tbody></table></div>
+</div>
+</details>
+
+<!-- 10 -->
+<details id="s10">
+<summary><span class="num">10</span><h2>Limitations — stated plainly</h2><span class="chev">›</span></summary>
+<div class="body">
+<ul>
+  <li><strong>Impact numbers are estimates.</strong> They depend on a third-party marginal emissions model. Marginal signals are noisy (a small demand change can double the signal when the marginal unit flips from gas to coal <a href="#r3">[3]</a>). We label them; we do not certify them.</li>
+  <li><strong>One operator cannot fix grid-scale herding.</strong> We avoid causing it and expose the hooks; the full solution requires aggregators and grid operators to share dispatch models.</li>
+  <li><strong>Savings depend on the tariff.</strong> Where off-peak is overnight and the site is a workplace, cost and carbon may conflict; the weights <code>w_c</code>, <code>w_$</code> make the trade-off explicit rather than hidden.</li>
+  <li><strong>Signal quality varies by region.</strong> California and GB are excellent; many grids (including India’s regional zones) have coarser or modelled data. The adapter pattern helps; it does not create data.</li>
+  <li><strong>The demo uses simulated chargers</strong> (OCPP 1.6J, the same messages a real EVSE exchanges). Real hardware adds firmware quirks we have not met yet.</li>
+  <li><strong>Adoption at real sites is unproven.</strong> The zero-decision default is designed for the 72% who never schedule; whether site owners buy is the commercial question the bill-delta demo is meant to answer.</li>
+  <li><strong>No bidirectional (V2G) charging.</strong> ISO 15118-20 / OCPP 2.1 are left as extension points.</li>
+  <li><strong>Attribution is temporal, not physical.</strong> “Green charging” means moving load to cleaner hours; it never means specific renewable electrons.</li>
+</ul>
+</div>
+</details>
+
+<!-- 11 -->
+<details id="s11">
+<summary><span class="num">11</span><h2>Pressure test — five-advisor council and peer review</h2><span class="chev">›</span></summary>
+<div class="body">
+<p class="small">The draft solution was run through five independent perspectives (contrarian, first-principles, expansionist, outsider, executor), each reviewed anonymously by the others, then synthesised. What changed as a result is marked.</p>
+<h3>Where they agreed</h3>
+<ul>
+  <li>Anti-herding cohort math is three orders of magnitude away from a 40-connector lot. <em>→ Cut to an honest slide; kept as architecture (no broadcast) and a multi-site penalty term.</em></li>
+  <li>Three pricing lanes (“Green Flex / Standard / Boost”) were a liability: the green lane was the slowest lane, contradicting the deferral-aversion evidence, and they manufactured the very coordination problem the cohort math then solved. <em>→ One question, one Boost toggle.</em></li>
+  <li>“When do you leave?” is the strongest asset. Keep it in front; bury the math.</li>
+  <li>“Fairness” isn’t in the product until it is a constraint. <em>→ Progress-floor constraint.</em></li>
+  <li>No payer had been named. <em>→ Site owner on the PG&amp;E BEV rate; utility programs second; drivers pay nothing extra.</em></li>
+</ul>
+<h3>Where they clashed</h3>
+<ul>
+  <li><strong>Transparency vs control.</strong> If the system already picked the optimal action, does the driver need to see carbon at all? Resolution: the driver sees one outcome number (saved $ and CO₂), not the signal — and the brief explicitly asks for visibility.</li>
+  <li><strong>Safety floor: afterthought or headline?</strong> Both — hardcode the 30-min sprint, then demo an early unplug live. Trust is the adoption gate.</li>
+  <li><strong>Scope.</strong> Vertical slice (A+B+D+E) vs “build the VPP dispatch layer”. The 48-hour clock decides; the grid endpoints stay as stubs that show the direction.</li>
+</ul>
+<h3>Blind spots caught in review</h3>
+<ul>
+  <li>The draft demo paired a <strong>UK grid signal with California sessions</strong>. <em>→ Fixed: WattTime CAISO_NORTH (free Basic plan, 72 h forecast) + gridstatus.</em></li>
+  <li><strong>LP infeasibility</strong> was unhandled. <em>→ Elastic constraints.</em></li>
+  <li><strong>Liability</strong>: the optimiser throttles real current. <em>→ Hardware limits set outside the LP; software can only delay.</em></li>
+  <li>Unaudited “receipts” dressed as certificates are a credibility risk. <em>→ Labelled estimates; certificates are roadmap.</em></li>
+  <li>No feature-by-feature comparison with named incumbents. <em>→ §7.</em></li>
+  <li>Privacy of ISO 15118 / departure data. <em>→ §9.</em></li>
+</ul>
+<h3>Verdict</h3>
+<p>Build it — as a site-owner product for daytime lots, not a driver-facing green app. The first thing to do is not UI: run the elastic LP on 40 real ACN-Data sessions against PG&amp;E BEV rates and WattTime CAISO_NORTH history and print the site’s bill and CO₂ delta versus charge-immediately. If that number is compelling, it is the pitch. If not, nothing else matters.</p>
+</div>
+</details>
+
+<!-- 12 -->
+<details id="s12">
+<summary><span class="num">12</span><h2>How we got here — the research and ideation trail</h2><span class="chev">›</span></summary>
+<div class="body">
+<h3>The trail</h3>
+<ol>
+  <li><strong>Started from the brief</strong> and asked what “align with renewables” physically means → it is a timing problem, so the product is a scheduler.</li>
+  <li><strong>Looked for the behaviour data.</strong> Gupta et al. (Rivian telematics) gave the killer default-behaviour fact: 72% charge immediately, &lt;26% schedule <a href="#r1">[1]</a>. Any solution requiring driver effort was out.</li>
+  <li><strong>Looked for the grid-side data.</strong> EIA/CAISO: 3.4 TWh curtailed in 2024, midday, 93% solar <a href="#r6">[6]</a>. So the clean hours are daytime.</li>
+  <li><strong>Asked where cars are in daytime.</strong> Powell et al. (Nature Energy 2022): shifting to daytime charging beats home-overnight on storage, curtailment, ramping and emissions <a href="#r2">[2]</a>. Workplace dwell studies: 8–10 h parked for 7–10 kWh <a href="#r18">[18]</a>. The wedge appeared.</li>
+  <li><strong>Mapped the incumbents.</strong> All the carbon-aware products live at home overnight; the workplace/CPO products optimise cost. Empty square.</li>
+  <li><strong>Found the technical constraint nobody has answered yet.</strong> Martin, Powell &amp; Rajagopal (Dec 2025): broadcast emissions signals can increase emissions at scale; cascading group-wise signals fix it <a href="#r3">[3]</a>. This is why the design optimises centrally per site and never broadcasts.</li>
+  <li><strong>Checked feasibility.</strong> OCPP 1.6/2.0.1 support charging profiles and (2.0.1) departure time <a href="#r13">[13]</a>; WattTime’s free plan covers CAISO_NORTH with forecasts <a href="#r8">[8]</a>; ACN-Data has 30 k real sessions <a href="#r16">[16]</a>; PG&amp;E’s BEV rate makes carbon and cost point the same way <a href="#r12">[12]</a>.</li>
+  <li><strong>Pressure-tested</strong> (§11) and simplified: dropped the lanes, made the LP elastic, fixed the signal/session grid mismatch, named the payer.</li>
+</ol>
+
+<h3>Assumptions we challenged</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Everyone assumes…</th><th>What we found</th></tr></thead>
+<tbody>
+<tr><td>“Green = low average grid carbon”</td><td>Decisions move the marginal generator; at scale even marginal signals fail if broadcast <a href="#r3">[3]</a>.</td></tr>
+<tr><td>“Drivers must choose to charge green”</td><td>72% never choose anything; the default decides <a href="#r1">[1]</a>.</td></tr>
+<tr><td>“The problem is at home, overnight”</td><td>The solar surplus and the idle plugged-in hours are both daytime, at work <a href="#r2">[2]</a> <a href="#r18">[18]</a>.</td></tr>
+<tr><td>“Price already encodes carbon”</td><td>Most off-peak windows are overnight (gas). California’s BEV rate is the exception <a href="#r12">[12]</a> <a href="#r22">[22]</a>.</td></tr>
+<tr><td>“Departure time is unknowable”</td><td>OCPP 2.0.1/ISO 15118 carry it; ACN has asked users for it since 2018; history predicts it well enough for a conservative default <a href="#r13">[13]</a> <a href="#r16">[16]</a>.</td></tr>
+<tr><td>“Per-session carbon accounting is hand-waving”</td><td>Hourly granular certificates are now a standard with accredited issuers (June 2025) — a roadmap, not a fantasy <a href="#r15">[15]</a>.</td></tr>
+</tbody></table></div>
+
+<h3>Ideas opened, checked, kept or dropped</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>Idea (lens)</th><th>Science / feasibility</th><th>Decision</th></tr></thead>
+<tbody>
+<tr><td>Zero-decision default with learned deadline (break assumption)</td><td>Grounded</td><td class="yes">Core</td></tr>
+<tr><td>Deadline-constrained LP per site (first principles)</td><td>Grounded — standard LP</td><td class="yes">Core</td></tr>
+<tr><td>Counterfactual receipt (borrowed from finance: “vs benchmark”)</td><td>Grounded; depends on labelled method</td><td class="yes">Core</td></tr>
+<tr><td>Flexibility-priced lanes (borrowed from airlines)</td><td>Grounded but contradicts deferral-aversion evidence; adds coordination</td><td class="no">Dropped → single Boost toggle</td></tr>
+<tr><td>Cascading cohort signals (borrowed from Martin et al.)</td><td>Grounded at aggregator scale; needs grid dispatch model</td><td class="part">Roadmap; approximated by committed-load term</td></tr>
+<tr><td>Shared “pheromone” load ledger across operators (biomimicry: stigmergy)</td><td>Stretch — cross-company data sharing</td><td class="part">Roadmap</td></tr>
+<tr><td>Use curtailment as the strongest signal (remove a limit)</td><td>Grounded where ISOs publish it (CAISO does); absent elsewhere</td><td class="part">Overlay in dashboard</td></tr>
+<tr><td>Per-session hourly clean-energy certificates (combine two things)</td><td>Standard exists; issuer integration is real work</td><td class="part">Roadmap for fleets</td></tr>
+<tr><td>Edge-mode operation with cached forecast (scale shift ×0.001)</td><td>Grounded</td><td class="yes">Core fallback</td></tr>
+<tr><td>Grid-operator flex API / OpenADR 3.0 (change the user)</td><td>Grounded</td><td class="part">Stub</td></tr>
+<tr><td>V2G evening discharge of noon solar (time travel +20 y)</td><td>Stretch — hardware rare</td><td class="part">Extension point</td></tr>
+<tr><td>Shift DC fast charging (inversion of the wedge)</td><td>Blocked by human constraint (30–60 min max wait)</td><td class="no">Info only</td></tr>
+<tr><td>“100% renewable charging” claim</td><td>Blocked — electrons not attributable</td><td class="no">Never claimed</td></tr>
+</tbody></table></div>
+</div>
+</details>
+
+<!-- 13 -->
+<details id="s13">
+<summary><span class="num">13</span><h2>References — all opened on 11 Sep 2026</h2><span class="chev">›</span></summary>
+<div class="body">
+<p class="note">Verification notes: Nature pages redirect to a login wall for automated access; the same papers were read through open mirrors (PubMed Central, OSTI, RePEc). The MDPI <em>Energies</em> workplace study returned HTTP 403; its figures are taken from the abstract as indexed by search and marked accordingly. The McKinsey “55% would pay a premium” figure is via a secondary source. Everything else was read directly.</p>
+<ol class="refs">
+  <li id="r1">Gupta, Vreeland, Peterman, Girouard, Wang (2025). <em>The Untapped Potential of Smart Charging: How EV Owners Can Save Money and Reduce Emissions Without Behavioral Change.</em> arXiv:2503.03167 (rev. Oct 2025). Rivian 2023 telematics; 72% immediate start; &lt;26% deliberate scheduling; ~$140/yr; up to 28% emissions cut. <a href="https://arxiv.org/abs/2503.03167">arxiv.org/abs/2503.03167</a></li>
+  <li id="r2">Powell, Cezar, Min, Azevedo, Rajagopal (2022). <em>Charging infrastructure access and operation to reduce the grid impacts of deep electric vehicle adoption.</em> Nature Energy 7, 932–945. Peak +25% (50% under full electrification); daytime charging reduces storage, excess non-fossil generation, ramping, emissions. <a href="https://www.nature.com/articles/s41560-022-01105-7">nature.com</a> · open copy: <a href="https://www.osti.gov/pages/biblio/1987341">osti.gov/pages/biblio/1987341</a></li>
+  <li id="r3">Martin, Powell, Rajagopal (2025). <em>Cascading marginal emissions signals for green charging with growing electric vehicle adoption.</em> Nature Communications 16 (Dec 2025). AEF can add up to 3.7%; MEF net-negative beyond ~1.5 M EVs; cascading cuts added emissions 10–28% at 2 M EVs; groups ≤200 k; avoid plain MEF/AEF beyond ~500 k; 75% compliance still yields &gt;7% reduction. <a href="https://www.nature.com/articles/s41467-025-64979-7">nature.com</a> · open copy: <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC12630845/">PMC12630845</a></li>
+  <li id="r4">Maji, Bashir, Irwin, Shenoy, Sitaraman (2024). <em>The Green Mirage: Impact of Location- and Market-based Carbon Intensity Estimation on Carbon Optimization Efficacy.</em> arXiv:2402.03550. Savings overstated by up to 55.1%. <a href="https://arxiv.org/abs/2402.03550">arxiv.org/abs/2402.03550</a></li>
+  <li id="r5">Tranberg et al. (2019). <em>Real-Time Carbon Accounting Method for the European Electricity Markets.</em> arXiv:1812.06679 — the flow-tracing method behind Electricity Maps. <a href="https://arxiv.org/abs/1812.06679">arxiv.org/abs/1812.06679</a></li>
+  <li id="r6">U.S. EIA, Today in Energy (2025). <em>Solar and wind power curtailments are increasing in California.</em> 3.4 TWh curtailed in 2024, +29% YoY, 93% solar; solar ≈ half of demand 08–16; gas kept online for reliability/ramp. <a href="https://www.eia.gov/todayinenergy/detail.php?id=65364">eia.gov/todayinenergy/detail.php?id=65364</a></li>
+  <li id="r7">pv magazine USA (22 Jul 2025). <em>California solar curtailment down 12% on back of batteries.</em> Share fell 13% → 11.5% (Jan–May 2025), absolute +4.1%. <a href="https://pv-magazine-usa.com/2025/07/22/california-solar-curtailment-down-12-on-back-of-batteries/">pv-magazine-usa.com</a> · CAISO Key Statistics Sep 2025 (14.2 GW batteries): <a href="https://www.caiso.com/documents/key-statistics-sep-2025.pdf">caiso.com</a></li>
+  <li id="r8">WattTime. AER / marginal emissions: 5-min MOER, 210+ countries, up to 18% annual EV emissions cut; ev.energy partnership (120 k drivers). <a href="https://watttime.org/news-and-insights/watttime-and-ev-energy-expand-partnership-to-allow-ev-drivers-to-automatically-sync-charging-with-cleaner-electricity/">watttime.org (ev.energy)</a> · <a href="https://watttime.org/news-and-insights/more-than-one-billion-smart-devices-now-using-marginal-emissions-data-to-slash-power-grid-pollution-with-watttimes-aer/">1 billion devices</a> · Data plans (Basic: all signals for CAISO_NORTH, 2+ yrs history, 72 h forecast updated every 5 min): <a href="https://watttime.org/docs-dev/data-plans/">watttime.org/docs-dev/data-plans</a></li>
+  <li id="r9">Electricity Maps. Methodology (flow tracing, IPCC AR5 factors): <a href="https://www.electricitymaps.com/data/methodology">electricitymaps.com/data/methodology</a> · 72-hour forecasts: <a href="https://www.electricitymaps.com/resources/updates/new-72-hour-grid-forecasts-advanced-load-optimization-for-greater-carbon-and-cost-savings">announcement</a> · Free tier limits (1 zone, 50 req/h, no forecast): <a href="https://help.electricitymaps.com/en/articles/13335550-how-can-i-access-the-electricity-maps-api-and-are-there-any-restrictions">help centre</a></li>
+  <li id="r10">NESO Carbon Intensity API (GB). Free, no auth, CC BY 4.0, 30-min, 96 h+ forecast, 14 DNO regions. <a href="https://carbonintensity.org.uk/">carbonintensity.org.uk</a></li>
+  <li id="r11">gridstatus (open source). CAISO fuel mix, load, prices, renewable curtailment. <a href="https://github.com/gridstatus/gridstatus">github.com/gridstatus/gridstatus</a> · curtailment example: <a href="https://opensource.gridstatus.io/en/0.23.0/Examples/caiso/Renewable%20Curtailment.html">docs</a></li>
+  <li id="r12">PG&amp;E Business EV rate plans: super-off-peak 09:00–14:00, peak 16:00–21:00, subscription kW blocks, no traditional demand charges. <a href="https://www.pge.com/en/account/rate-plans/electric-vehicles.html">pge.com</a> · CPUC overview: <a href="https://www.cpuc.ca.gov/industries-and-topics/electrical-energy/infrastructure/transportation-electrification/electricity-rates-and-cost-of-fueling">cpuc.ca.gov</a></li>
+  <li id="r13">Open Charge Alliance. <em>What is new in OCPP 2.0.1</em> (ISO 15118 support; EV sends energy amount and departure time). <a href="https://openchargealliance.org/wp-content/uploads/2024/01/new_in_ocpp_201-v10.pdf">PDF</a> · <code>ChargingNeeds.departureTime</code>, <code>ACChargingParameters.energyAmount</code> reference: <a href="https://pkg.go.dev/github.com/pxc-smart-business/ocpp-go/ocpp2.0.1/smartcharging">ocpp-go docs</a></li>
+  <li id="r14">OCPI 2.2.1 (Tariffs, ChargingProfiles modules): <a href="https://www.ampeco.com/guides/the-complete-ocpi-guide/">AMPECO guide</a> · OpenADR 3.0 with OCPP: <a href="https://www.openadr.org/assets/using%20openadr%20with%20ocpp.pdf">openadr.org PDF</a></li>
+  <li id="r15">EnergyTag. First accredited Granular Certificate issuers (June 2025): <a href="https://energytag.org/energytag-accredits-first-granular-certificate-issuers-marking-a-major-milestone-for-hourly-clean-energy-tracking/">energytag.org</a> · Flexidao × Google, 10.5 TWh converted to hourly certificates: <a href="https://www.flexidao.com/resources/google-portfolio-gc-conversion">flexidao.com</a></li>
+  <li id="r16">Lee, Li, Low (2019). <em>ACN-Data: Analysis and Applications of an Open EV Charging Dataset.</em> ACM e-Energy. 30 k+ workplace sessions, Caltech/JPL. <a href="https://ev.caltech.edu/assets/pub/ACN_Data_Analysis_and_Applications.pdf">paper PDF</a> · <a href="https://github.com/zach401/acnportal">acnportal</a></li>
+  <li id="r17">mobilityhouse/ocpp — Python OCPP 1.6 and 2.0.1 implementation. <a href="https://github.com/mobilityhouse/ocpp">github.com/mobilityhouse/ocpp</a></li>
+  <li id="r18">Workplace charging session statistics (dwell 8–10 h; 7–10 kWh; arrivals 07–09, departures 16–18): <em>Evaluation of Electric Vehicle Charging Usage and Driver Activity</em>, World Electric Vehicle Journal 14(11):308 — <a href="https://doi.org/10.3390/wevj14110308">doi:10.3390/wevj14110308</a> · <em>Load Flexibilities from Charging Processes by EVs at the Workplace: Southern Germany</em>, Energies 19(1):42 — <a href="https://doi.org/10.3390/en19010042">doi:10.3390/en19010042</a> <span class="tag warn">abstract only (403)</span> · high-resolution workplace data: <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8263557/">PMC8263557</a></li>
+  <li id="r19">Tucker, Cezar, Alizadeh (2022). <em>Real-Time Electric Vehicle Smart Charging at Workplaces: A Real-World Case Study.</em> arXiv:2203.06847. Google campus; scheduler without SoC/departure knowledge. <a href="https://arxiv.org/abs/2203.06847">arxiv.org/abs/2203.06847</a></li>
+  <li id="r20">Applied Energy (2025). <em>Consumer preferences and willingness to pay for EV charging: Implications for incentives to promote off-peak charging and renewables integration.</em> ≈ $0.06/kWh marginal WTP for green electricity; aversion to long deferral windows (upstate New York choice experiment). <a href="https://www.sciencedirect.com/science/article/pii/S0306261925007111">sciencedirect.com</a> · McKinsey “~55% prioritise green charging / would pay a premium” via <a href="https://flexecharge.com/blog/exploring-consumer-sentiment-on-electric-vehicle-charging---new-mckinsey-report">Flexecharge summary</a> <span class="tag warn">secondary</span></li>
+  <li id="r21">Ava Community Energy (8 May 2025). <em>Ava SmartHome Charging</em> with Optiwatt: $75 enrolment + up to $25/yr; goal 5,000 vehicles. <a href="https://avaenergy.org/news/ava-launches-ava-smarthome-charging/">avaenergy.org</a> · <a href="https://optiwatt.com/">optiwatt.com</a></li>
+  <li id="r22">Octopus Energy. <em>Intelligent Octopus Go: smart charging and Charge Cap explained</em> — off-peak 23:30–05:30, up to 6 h scheduled. <a href="https://octopus.energy/blog/intelligent-octopus-go-smarter-charging-for-a-greener-grid/">octopus.energy</a></li>
+  <li id="r23">Monta SmartCharge: <a href="https://monta.com/en/features/smartcharge/">monta.com</a> · Driivz CPO solutions: <a href="https://driivz.com/solutions/charge-point-operators/">driivz.com</a> · Ampcontrol (ISO 15118 + OCPP 2.0): <a href="https://www.ampcontrol.io/post/iso-15118-and-ocpp-2-0-the-dream-team-for-smart-charging?lang=en">ampcontrol.io</a> · FlexCharging × WattTime: <a href="https://watttime.org/news-and-insights/flexcharging-integrates-watttimes-automated-emissions-reduction-aer-into-charging-software-allows-electric-vehicles-to-optimize-their-smart-charging-to-reduce-grid-emissions/">watttime.org</a> · WeaveGrid: <a href="https://www.weavegrid.com/news/ev-charging-incentives-and-savings">weavegrid.com</a></li>
+</ol>
+</div>
+</details>
+
+<p class="small" style="margin-top:2rem">Prepared for the hackathon ideation phase. Numbers are quoted from the cited sources; product comparisons reflect public descriptions on the research date and should be re-checked before external use.</p>
+
+</div>
+<script>
+(function(){
+  var all=document.querySelectorAll('details');
+  document.getElementById('expandAll').addEventListener('click',function(){all.forEach(function(d){d.open=true;});});
+  document.getElementById('collapseAll').addEventListener('click',function(){all.forEach(function(d){d.open=false;});});
+  // open the section a hash link points at
+  function openHash(){var h=location.hash&&document.querySelector(location.hash);if(h&&h.tagName==='DETAILS'){h.open=true;}}
+  window.addEventListener('hashchange',openHash);openHash();
+})();
+</script>
+</body>
+</html>
