@@ -1,0 +1,973 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Noonshift",
+  "version": "0.1.0"
+ },
+ "paths": {
+  "/health": {
+   "get": {
+    "summary": "Health",
+    "operationId": "health_health_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/sessions": {
+   "post": {
+    "summary": "Create Session",
+    "description": "Driver answers \"When do you leave?\". Updates the session on that connector, or plugs a new one in.",
+    "operationId": "create_session_sessions_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SessionIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SessionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/sessions/{sid}/boost": {
+   "post": {
+    "summary": "Boost",
+    "operationId": "boost_sessions__sid__boost_post",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Sid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SessionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/sessions/{sid}/live": {
+   "get": {
+    "summary": "Live",
+    "operationId": "live_sessions__sid__live_get",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Sid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/sites/{site_id}/plan": {
+   "get": {
+    "summary": "Site Plan",
+    "operationId": "site_plan_sites__site_id__plan_get",
+    "parameters": [
+     {
+      "name": "site_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Site Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PlanMsg"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/sites/{site_id}/impact": {
+   "get": {
+    "summary": "Site Impact",
+    "operationId": "site_impact_sites__site_id__impact_get",
+    "parameters": [
+     {
+      "name": "site_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Site Id"
+      }
+     },
+     {
+      "name": "from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "From"
+      }
+     },
+     {
+      "name": "to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "To"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImpactOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/sites/{site_id}/status": {
+   "get": {
+    "summary": "Site Status",
+    "operationId": "site_status_sites__site_id__status_get",
+    "parameters": [
+     {
+      "name": "site_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Site Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StatusOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/grid/flex-forecast": {
+   "get": {
+    "summary": "Flex Forecast",
+    "description": "Stub: headroom under the feed not claimed by the current plan, per hour of the rest of today.",
+    "operationId": "flex_forecast_grid_flex_forecast_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/FlexHour"
+         },
+         "type": "array",
+         "title": "Response Flex Forecast Grid Flex Forecast Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/openadr/events": {
+   "post": {
+    "summary": "Openadr Event",
+    "description": "Stub: accept a DR event as a feed reduction over [start, end) and re-solve.",
+    "operationId": "openadr_event_openadr_events_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DrEvent"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/demo/early_unplug": {
+   "post": {
+    "summary": "Demo Early Unplug",
+    "description": "Tom: told us 17:00, leaves now. Picks the charging car with the latest deadline and least energy.",
+    "operationId": "demo_early_unplug_demo_early_unplug_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/demo/boost": {
+   "post": {
+    "summary": "Demo Boost",
+    "description": "Sofia: 10:30 site visit. Picks the least-charged car, moves its deadline to now+1h with Boost.",
+    "operationId": "demo_boost_demo_boost_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/demo/oversubscribe": {
+   "post": {
+    "summary": "Demo Oversubscribe",
+    "description": "+20 late arrivals, 2 h deadlines, on the spare connectors. More demand than the feed can serve.",
+    "operationId": "demo_oversubscribe_demo_oversubscribe_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/demo/signal_outage": {
+   "post": {
+    "summary": "Demo Signal Outage",
+    "description": "Knock rungs out of the fail-safe ladder (default: the live signal) or restore all.",
+    "operationId": "demo_signal_outage_demo_signal_outage_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OutageIn",
+        "default": {
+         "rungs": [
+          "live"
+         ],
+         "restore": false
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "ConnectorPlan": {
+    "properties": {
+     "connector_id": {
+      "type": "string",
+      "title": "Connector Id"
+     },
+     "session_id": {
+      "type": "integer",
+      "title": "Session Id"
+     },
+     "kw": {
+      "items": {
+       "type": "number"
+      },
+      "type": "array",
+      "title": "Kw"
+     }
+    },
+    "type": "object",
+    "required": [
+     "connector_id",
+     "session_id",
+     "kw"
+    ],
+    "title": "ConnectorPlan"
+   },
+   "DemoOut": {
+    "properties": {
+     "changed": {
+      "type": "string",
+      "title": "Changed"
+     },
+     "detail": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "required": [
+     "changed",
+     "detail"
+    ],
+    "title": "DemoOut"
+   },
+   "DrEvent": {
+    "properties": {
+     "start": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Start"
+     },
+     "end": {
+      "type": "string",
+      "format": "date-time",
+      "title": "End"
+     },
+     "reduce_kw": {
+      "type": "number",
+      "title": "Reduce Kw"
+     }
+    },
+    "type": "object",
+    "required": [
+     "start",
+     "end",
+     "reduce_kw"
+    ],
+    "title": "DrEvent"
+   },
+   "FlexHour": {
+    "properties": {
+     "hour": {
+      "type": "integer",
+      "title": "Hour"
+     },
+     "shiftable_kw": {
+      "type": "number",
+      "title": "Shiftable Kw"
+     }
+    },
+    "type": "object",
+    "required": [
+     "hour",
+     "shiftable_kw"
+    ],
+    "title": "FlexHour"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "ImpactOut": {
+    "properties": {
+     "from": {
+      "type": "string",
+      "format": "date-time",
+      "title": "From"
+     },
+     "to": {
+      "type": "string",
+      "format": "date-time",
+      "title": "To"
+     },
+     "sessions": {
+      "type": "integer",
+      "title": "Sessions"
+     },
+     "kwh": {
+      "type": "number",
+      "title": "Kwh"
+     },
+     "saved_usd": {
+      "type": "number",
+      "title": "Saved Usd"
+     },
+     "saved_kgco2": {
+      "type": "number",
+      "title": "Saved Kgco2"
+     },
+     "note": {
+      "type": "string",
+      "title": "Note",
+      "default": "estimate vs charge-immediately baseline"
+     }
+    },
+    "type": "object",
+    "required": [
+     "from",
+     "to",
+     "sessions",
+     "kwh",
+     "saved_usd",
+     "saved_kgco2"
+    ],
+    "title": "ImpactOut"
+   },
+   "LiveOut": {
+    "properties": {
+     "session_id": {
+      "type": "integer",
+      "title": "Session Id"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "pending",
+       "charging",
+       "done",
+       "ended"
+      ],
+      "title": "Status"
+     },
+     "kw_now": {
+      "type": "number",
+      "title": "Kw Now"
+     },
+     "grid_percentile": {
+      "type": "number",
+      "title": "Grid Percentile"
+     },
+     "kwh_delivered": {
+      "type": "number",
+      "title": "Kwh Delivered"
+     },
+     "kwh_needed": {
+      "type": "number",
+      "title": "Kwh Needed"
+     },
+     "saved_usd": {
+      "type": "number",
+      "title": "Saved Usd"
+     },
+     "saved_kgco2": {
+      "type": "number",
+      "title": "Saved Kgco2"
+     }
+    },
+    "type": "object",
+    "required": [
+     "session_id",
+     "status",
+     "kw_now",
+     "grid_percentile",
+     "kwh_delivered",
+     "kwh_needed",
+     "saved_usd",
+     "saved_kgco2"
+    ],
+    "title": "LiveOut"
+   },
+   "OutageIn": {
+    "properties": {
+     "rungs": {
+      "items": {
+       "type": "string",
+       "enum": [
+        "live",
+        "cached",
+        "tariff",
+        "deadline"
+       ]
+      },
+      "type": "array",
+      "title": "Rungs",
+      "default": [
+       "live"
+      ]
+     },
+     "restore": {
+      "type": "boolean",
+      "title": "Restore",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "OutageIn"
+   },
+   "PlanMsg": {
+    "properties": {
+     "type": {
+      "type": "string",
+      "const": "plan",
+      "title": "Type",
+      "default": "plan"
+     },
+     "site_id": {
+      "type": "string",
+      "title": "Site Id"
+     },
+     "solved_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Solved At"
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "live",
+       "cached",
+       "tariff",
+       "deadline",
+       "full"
+      ],
+      "title": "Mode"
+     },
+     "reason": {
+      "type": "string",
+      "title": "Reason"
+     },
+     "horizon_start": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Horizon Start"
+     },
+     "slot_minutes": {
+      "type": "integer",
+      "title": "Slot Minutes",
+      "default": 5
+     },
+     "connectors": {
+      "items": {
+       "$ref": "#/components/schemas/ConnectorPlan"
+      },
+      "type": "array",
+      "title": "Connectors"
+     },
+     "site_kw": {
+      "items": {
+       "type": "number"
+      },
+      "type": "array",
+      "title": "Site Kw"
+     }
+    },
+    "type": "object",
+    "required": [
+     "site_id",
+     "solved_at",
+     "mode",
+     "reason",
+     "horizon_start",
+     "connectors",
+     "site_kw"
+    ],
+    "title": "PlanMsg"
+   },
+   "PlanWindow": {
+    "properties": {
+     "start": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "ready_by": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Ready By"
+     }
+    },
+    "type": "object",
+    "required": [
+     "start",
+     "end",
+     "ready_by"
+    ],
+    "title": "PlanWindow"
+   },
+   "Price": {
+    "properties": {
+     "tier": {
+      "type": "string",
+      "enum": [
+       "green",
+       "standard",
+       "boost"
+      ],
+      "title": "Tier"
+     },
+     "usd_per_kwh": {
+      "type": "number",
+      "title": "Usd Per Kwh"
+     }
+    },
+    "type": "object",
+    "required": [
+     "tier",
+     "usd_per_kwh"
+    ],
+    "title": "Price"
+   },
+   "SessionIn": {
+    "properties": {
+     "connector_id": {
+      "type": "string",
+      "title": "Connector Id"
+     },
+     "departure_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Departure At"
+     },
+     "kwh_needed": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Kwh Needed"
+     }
+    },
+    "type": "object",
+    "required": [
+     "connector_id",
+     "departure_at"
+    ],
+    "title": "SessionIn"
+   },
+   "SessionOut": {
+    "properties": {
+     "session_id": {
+      "type": "integer",
+      "title": "Session Id"
+     },
+     "connector_id": {
+      "type": "string",
+      "title": "Connector Id"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "pending",
+       "charging",
+       "done",
+       "ended"
+      ],
+      "title": "Status"
+     },
+     "plan": {
+      "$ref": "#/components/schemas/PlanWindow"
+     },
+     "eta": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Eta"
+     },
+     "price": {
+      "$ref": "#/components/schemas/Price"
+     },
+     "boost": {
+      "type": "boolean",
+      "title": "Boost"
+     }
+    },
+    "type": "object",
+    "required": [
+     "session_id",
+     "connector_id",
+     "status",
+     "plan",
+     "eta",
+     "price",
+     "boost"
+    ],
+    "title": "SessionOut"
+   },
+   "StatusOut": {
+    "properties": {
+     "mode": {
+      "type": "string",
+      "enum": [
+       "live",
+       "cached",
+       "tariff",
+       "deadline",
+       "full"
+      ],
+      "title": "Mode"
+     },
+     "last_solve_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Solve At"
+     },
+     "connectors_active": {
+      "type": "integer",
+      "title": "Connectors Active"
+     }
+    },
+    "type": "object",
+    "required": [
+     "mode",
+     "last_solve_at",
+     "connectors_active"
+    ],
+    "title": "StatusOut"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   }
+  }
+ }
+}

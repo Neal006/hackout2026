@@ -1,0 +1,274 @@
+{
+ "$defs": {
+  "ConnectorMeter": {
+   "properties": {
+    "connector_id": {
+     "title": "Connector Id",
+     "type": "string"
+    },
+    "session_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Session Id"
+    },
+    "status": {
+     "enum": [
+      "idle",
+      "charging",
+      "done"
+     ],
+     "title": "Status",
+     "type": "string"
+    },
+    "kw": {
+     "title": "Kw",
+     "type": "number"
+    },
+    "kwh_delivered": {
+     "title": "Kwh Delivered",
+     "type": "number"
+    },
+    "kwh_needed": {
+     "title": "Kwh Needed",
+     "type": "number"
+    },
+    "departure_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Departure At"
+    },
+    "boost": {
+     "title": "Boost",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "connector_id",
+    "session_id",
+    "status",
+    "kw",
+    "kwh_delivered",
+    "kwh_needed",
+    "departure_at",
+    "boost"
+   ],
+   "title": "ConnectorMeter",
+   "type": "object"
+  },
+  "ConnectorPlan": {
+   "properties": {
+    "connector_id": {
+     "title": "Connector Id",
+     "type": "string"
+    },
+    "session_id": {
+     "title": "Session Id",
+     "type": "integer"
+    },
+    "kw": {
+     "items": {
+      "type": "number"
+     },
+     "title": "Kw",
+     "type": "array"
+    }
+   },
+   "required": [
+    "connector_id",
+    "session_id",
+    "kw"
+   ],
+   "title": "ConnectorPlan",
+   "type": "object"
+  },
+  "EventMsg": {
+   "properties": {
+    "type": {
+     "const": "event",
+     "default": "event",
+     "title": "Type",
+     "type": "string"
+    },
+    "sim_time": {
+     "format": "date-time",
+     "title": "Sim Time",
+     "type": "string"
+    },
+    "name": {
+     "enum": [
+      "plug_in",
+      "unplug",
+      "deadline",
+      "boost",
+      "dr",
+      "demo",
+      "mode",
+      "day_reset"
+     ],
+     "title": "Name",
+     "type": "string"
+    },
+    "detail": {
+     "additionalProperties": true,
+     "title": "Detail",
+     "type": "object"
+    }
+   },
+   "required": [
+    "sim_time",
+    "name",
+    "detail"
+   ],
+   "title": "EventMsg",
+   "type": "object"
+  },
+  "MeterMsg": {
+   "properties": {
+    "type": {
+     "const": "meter",
+     "default": "meter",
+     "title": "Type",
+     "type": "string"
+    },
+    "sim_time": {
+     "format": "date-time",
+     "title": "Sim Time",
+     "type": "string"
+    },
+    "mode": {
+     "enum": [
+      "live",
+      "cached",
+      "tariff",
+      "deadline",
+      "full"
+     ],
+     "title": "Mode",
+     "type": "string"
+    },
+    "site_kw": {
+     "title": "Site Kw",
+     "type": "number"
+    },
+    "building_load_kw": {
+     "title": "Building Load Kw",
+     "type": "number"
+    },
+    "feed_kw": {
+     "title": "Feed Kw",
+     "type": "number"
+    },
+    "connectors": {
+     "items": {
+      "$ref": "#/$defs/ConnectorMeter"
+     },
+     "title": "Connectors",
+     "type": "array"
+    }
+   },
+   "required": [
+    "sim_time",
+    "mode",
+    "site_kw",
+    "building_load_kw",
+    "feed_kw",
+    "connectors"
+   ],
+   "title": "MeterMsg",
+   "type": "object"
+  },
+  "PlanMsg": {
+   "properties": {
+    "type": {
+     "const": "plan",
+     "default": "plan",
+     "title": "Type",
+     "type": "string"
+    },
+    "site_id": {
+     "title": "Site Id",
+     "type": "string"
+    },
+    "solved_at": {
+     "format": "date-time",
+     "title": "Solved At",
+     "type": "string"
+    },
+    "mode": {
+     "enum": [
+      "live",
+      "cached",
+      "tariff",
+      "deadline",
+      "full"
+     ],
+     "title": "Mode",
+     "type": "string"
+    },
+    "reason": {
+     "title": "Reason",
+     "type": "string"
+    },
+    "horizon_start": {
+     "format": "date-time",
+     "title": "Horizon Start",
+     "type": "string"
+    },
+    "slot_minutes": {
+     "default": 5,
+     "title": "Slot Minutes",
+     "type": "integer"
+    },
+    "connectors": {
+     "items": {
+      "$ref": "#/$defs/ConnectorPlan"
+     },
+     "title": "Connectors",
+     "type": "array"
+    },
+    "site_kw": {
+     "items": {
+      "type": "number"
+     },
+     "title": "Site Kw",
+     "type": "array"
+    }
+   },
+   "required": [
+    "site_id",
+    "solved_at",
+    "mode",
+    "reason",
+    "horizon_start",
+    "connectors",
+    "site_kw"
+   ],
+   "title": "PlanMsg",
+   "type": "object"
+  }
+ },
+ "anyOf": [
+  {
+   "$ref": "#/$defs/PlanMsg"
+  },
+  {
+   "$ref": "#/$defs/MeterMsg"
+  },
+  {
+   "$ref": "#/$defs/EventMsg"
+  }
+ ]
+}
