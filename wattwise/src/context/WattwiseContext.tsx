@@ -73,10 +73,13 @@ export const WattwiseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [history, setHistory] = useState<ChargingSession[]>([]);
   const [shortfallKwh, setShortfallKwh] = useState(0);
   const [targetSoC, setTargetSoC] = useState(INITIAL_VEHICLE.targetSoC);
+  // the socket handler is registered once; it reads the latest session/live through refs (updated in an effect, not during render)
   const sessionRef = useRef<SessionOut | null>(null);
-  sessionRef.current = session;
   const liveRef = useRef<LiveOut | null>(null);
-  liveRef.current = live;
+  useEffect(() => {
+    sessionRef.current = session;
+    liveRef.current = live;
+  }, [session, live]);
 
   // ---- WebSocket ----
   useEffect(() => {
@@ -181,7 +184,7 @@ export const WattwiseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       hasOptimized: !!session,
       chargeMode: session?.boost ? 'immediate' : 'smart',
     };
-  }, [session, mine, live, kwhDelivered, kwhNeeded, isOptimizing]);
+  }, [session, live, kwhDelivered, kwhNeeded, isOptimizing]);
 
   // hourly graph: tariff + carbon from /grid/signal, site load from the plan, my slots marked optimal
   const hourly: HourlyDataPoint[] = useMemo(() => {

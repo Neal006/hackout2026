@@ -1,17 +1,17 @@
 import { useGlobalState } from '../context/GlobalStateContext';
 
+const Card = ({ label, value, saved }) => (
+  <div className="border border-border p-5 bg-surface flex flex-col justify-between">
+    <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">{label}</span>
+    <span className={`mono text-3xl font-medium ${saved ? 'text-saved' : 'text-ink'}`}>{value}</span>
+  </div>
+);
+
 // Numbers come from GET /sites/{id}/impact: deltas vs the charge-immediately baseline, labelled estimates.
 export default function ImpactView() {
   const { data } = useGlobalState();
   const { impact, id: siteId } = data.siteDetail;
   const perSession = impact.sessions ? impact.saved_kgco2 / impact.sessions : 0;
-
-  const Card = ({ label, value, saved }) => (
-    <div className="border border-border p-5 bg-surface flex flex-col justify-between">
-      <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">{label}</span>
-      <span className={`mono text-3xl font-medium ${saved ? 'text-saved' : 'text-ink'}`}>{value}</span>
-    </div>
-  );
 
   return (
     <div className="p-8 max-w-5xl mx-auto w-full">
