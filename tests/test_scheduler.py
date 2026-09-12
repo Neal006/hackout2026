@@ -220,6 +220,15 @@ def test_rounding_up_still_respects_site_limit():
         assert site_kw(plan, t) <= 10 + 1e-6
 
 
+def test_rounding_up_never_creates_block_overage_the_lp_did_not_choose():
+    cars = [car(f"c{i}", 6, 10) for i in range(40)]  # 400 kWh over 5.5 h: fits under the 100 kW block
+    plan = solve(cars, site(), signal(), tariff(), NOW)
+    assert no_sub_min(plan)
+    assert max(site_kw(plan, t) for t in range(H)) <= 100 + 1e-6
+    lost = [10.0 - kwh(plan, c["connector_id"]) for c in cars]
+    assert max(lost) <= 2 * S.MIN_KW * SLOT_H + 1e-6 and sum(lost) <= 0.01 * 400, "trims cost the rounded car a 6 A slot, not a full slot"
+
+
 def test_trim_drops_a_car_to_zero_not_below_min_kw():
     cars = [dict(car(f"c{i}", 8, 14), departure=NOW) for i in range(40)]  # ASAP baseline: 280 kW wanted, 130 kW feed
     plan = solve(cars, site(), signal(), tariff(), NOW)

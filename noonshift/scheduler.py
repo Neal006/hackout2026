@@ -136,10 +136,12 @@ def solve_lp(cars, site, signal, tariff, now):
                     done - ALPHA * frac * need)
             c[F(i)], hi[F(i)] = M_FLOOR, need
     pure_asap = len(info["asap"]) == n
+    reserved = sum(min(MIN_KW, float(cars[i]["p_max_kw"])) for i in finish)  # finishing cars draw MIN_KW in slot 0
     for t in range(H):
-        row([(i * H + t, 1.0) for i in range(n)], avail[t])                            # rule 5
+        held = reserved if t == 0 else 0.0
+        row([(i * H + t, 1.0) for i in range(n)], max(0.0, avail[t] - held))           # rule 5
         if not pure_asap:
-            row([(i * H + t, 1.0) for i in range(n)] + [(OVER, -1.0)], site.get("block_kw", math.inf))
+            row([(i * H + t, 1.0) for i in range(n)] + [(OVER, -1.0)], site.get("block_kw", math.inf) - held)
     c[OVER], hi[OVER] = (0.0 if pure_asap else overage), math.inf
     c[Z], hi[Z] = M_SHORT * (sum(e_rems) / len(e_rems) if e_rems else 0.0), 1.0   # a mean car's worth of shortfall
 
@@ -157,24 +159,32 @@ def solve_lp(cars, site, signal, tariff, now):
     for i in finish:
         plan[cars[i]["connector_id"]][0] = min(MIN_KW, float(cars[i]["p_max_kw"]))
     info["shortfall_kwh"] = {car["connector_id"]: round(float(x[S(i)]), 4) for i, car in enumerate(cars)}
-    _enforce_min_kw(plan, cars, avail, now)
+    # rounding up to 6 A may not create block overage the LP did not choose; a chosen overage (over > 0) stands
+    lp_site = sum(plan.values())
+    cap = avail if pure_asap else np.minimum(avail, np.maximum(site.get("block_kw", math.inf), lp_site + 1e-9))
+    _enforce_min_kw(plan, cars, cap, now)
     return {cid: [math.floor(float(v) * 1000 + 1e-6) / 1000 for v in p] for cid, p in plan.items()}, info  # round down: never over the limit
 
 
-def _enforce_min_kw(plan, cars, avail, now):
+def _enforce_min_kw(plan, cars, cap, now):
     """Post-step, in place. EVs cannot charge below 6 A, so any allocation in (0, MIN_KW) rounds up to MIN_KW
-    (some EVs never resume after a pause). Rounding can push a slot over the site limit; trim the cars with the
-    most slack first, and a trimmed car drops to 0, never to a value below MIN_KW."""
+    (some EVs never resume after a pause). Rounding can push a slot over `cap` (site headroom, and the tariff
+    block unless the LP itself exceeded it); trim the cars with the most slack first, and a trimmed car drops
+    to 0, never to a value below MIN_KW. The energy lost to a trim is picked up by the next re-solve."""
     floor = {c["connector_id"]: min(MIN_KW, float(c["p_max_kw"])) for c in cars}
+    rounded = {}
     for cid, p in plan.items():
-        p[(p > 1e-9) & (p < floor[cid])] = floor[cid]
-    slack_order = sorted(cars, key=lambda c: -_slots_until(c["departure"], now))
+        up = (p > 1e-9) & (p < floor[cid])
+        p[up] = floor[cid]
+        for t in np.flatnonzero(up):
+            rounded.setdefault(int(t), []).append(cid)
+    slack_order = [c["connector_id"] for c in sorted(cars, key=lambda c: -_slots_until(c["departure"], now))]
     for t in range(HORIZON):
-        excess = sum(p[t] for p in plan.values()) - avail[t]
-        for c in slack_order:
+        excess = sum(p[t] for p in plan.values()) - cap[t]
+        for cid in rounded.get(t, []) + slack_order:  # the cars whose round-up caused the excess give way first
             if excess <= 1e-9:
                 break
-            p, cid = plan[c["connector_id"]], c["connector_id"]
+            p = plan[cid]
             if p[t] <= 0:
                 continue
             cut = min(p[t], excess)
