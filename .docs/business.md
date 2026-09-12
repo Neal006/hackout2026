@@ -12,7 +12,52 @@ Every $ figure below that is not from `prove.py` is marked **[est]** and should 
 2. **The money is in capacity**: demand charges, avoided service upgrades, and the permit/rebate rule that lets a site install more ports than its feed supports *if* software governs them. We have not measured a site like that yet.
 3. **Boost must equal today's price, never exceed it.** `price()` currently makes Boost a 60 % surcharge over standard. That breaks the "never worse than today" promise.
 4. **Emergency is the one edge case where Noonshift is strictly worse than a dumb charger** — a car that plugged in 30 min ago may hold 0.3 kWh instead of 3.5 kWh. Fix it with a first-hour floor and an emergency scale priced at today's rate (§4b), and say so in the pitch before someone asks.
-5. **The global story is a grid-type story**, not a California story. Solar-heavy grids with daytime dwell (CA, Australia, India, Spain) fit workplaces. Wind-heavy grids (Texas, UK, Denmark, Germany) fit overnight depots. Hydro/nuclear grids (France, Quebec, Norway) have no carbon lever at all — only capacity.
+5. **The customer is a corporate building** that owns its chargers and pays the building's bill; employees usually charge free, so the driver incentive is certainty and a reserved bay, and the company's money is the demand peak and the feed (§0b, §9b).
+6. **The global story is a grid-type story**, not a California story. Solar-heavy grids with daytime dwell (CA, Australia, India, Spain) fit workplaces. Wind-heavy grids (Texas, UK, Denmark, Germany) fit overnight depots. Hydro/nuclear grids (France, Quebec, Norway) have no carbon lever at all — only capacity.
+
+---
+
+## 0b. The customer: a corporate building with its own chargers
+
+Everything in this file is scoped to one customer type: **a company that owns (or leases) an office building or campus, owns the chargers in its parking lot, pays the building's electricity bill, and lets employees charge — usually free, sometimes at a flat employee rate.** The Caltech data we validated on is exactly this segment (institution-owned campus lot, staff and students as drivers), so the measured numbers transfer.
+
+What is different from a public charging network, and why it makes the model simpler:
+
+| | Public network (ChargePoint-style) | **Corporate building (our customer)** |
+|---|---|---|
+| Who owns the chargers | the network | the company |
+| Who pays the electricity | the network, resold per kWh | **the company, on the building's bill** |
+| What the driver pays | $/kWh or $/min | **usually $0** (a perk); sometimes a flat employee rate [est — see Assumption 1] |
+| Meter | separate EV meter, EV tariff | **often the building's main meter** — EV load adds to the building's demand peak |
+| Dwell | 30 min – 2 h | **8–9 h** (mean 7.7 h in our data) |
+| Cars vs plugs | drive-up | **more EVs than plugs; employees rotate at lunch** — a daily HR headache |
+| Why they bought chargers | revenue | **employee benefit + ESG + recruiting**; often with a utility/CALeVIP rebate |
+| Who signs | network ops | **facilities manager + sustainability lead**; budget = facilities opex or ESG |
+
+**What this changes in the model:**
+
+1. **The driver price ladder mostly disappears.** When charging is free, `R = $0` and §7b gives every tier a price of $0 — correct, and it means the driver-side incentive is *non-monetary*: a guaranteed charge by leave time, a reserved bay for flexible drivers, a fair rotation, a green badge. Where the company does charge employees (flat $/kWh), §7b applies unchanged with `R` = that rate. Emergency = `R` in both cases.
+2. **Billing, metering law and per-kWh price display are out of scope for the pilot.** The company is not selling electricity. That removes break points #11 and #12 for this customer.
+3. **The money is the building's demand charge and the feed, not energy arbitrage.** EV load sits on top of the building's own peak (HVAC, 13:00–16:00). The company's win is: *never let the chargers create a new building peak, and fit more chargers on the existing service.* Both are capacity, both work in January.
+4. **Port turnover is a first-class feature, not an edge case.** "More EVs than plugs" is the normal state of a corporate lot. Notification when done + a move-by time is the feature facilities managers ask for first (solutions.md §3).
+5. **Two reporting lines the company already has to fill in:** Scope 2 (the electricity the chargers use) and Scope 3 category 7 (employee commuting). Clean-hour charging lowers both, with an hourly record behind it. Nobody sells this to them today as a by-product of load management.
+6. **The channel is the installer and the rebate.** Corporates install chargers in batches through an electrical contractor, often with a utility make-ready or CALeVIP rebate that requires load-management-capable hardware. The EMS that lets 60 ports run on a 150 kW service (NEC 625.42) is bought at install time.
+
+**Assumption 1:** most US workplace charging is free to the employee (widely reported by network operators and in DOE Workplace Charging Challenge material; not re-verified today). **Assumption 2:** the building's demand charge is billed on the whole-building meter at roughly $20–25/kW/month for a mid-size PG&E commercial rate (B-19 range) — verify against the customer's actual bill; our `tariff.json` models an EV-only block, which is the separate-meter case.
+
+**Corporate value stack, per site per year** (60 ports, 150 kW feed, 379 kWh/day, 250 days; measured where marked, else [est]):
+
+| Line | How | Value |
+|---|---|---|
+| Avoided new building peak | EV load capped so building + EV never exceeds the current contracted peak; unmanaged morning EV peak is 101 kW (measured) on top of the 40 kW building load | 40–60 kW × $22 × 12 ≈ **$10–16k/yr** [est] at a building whose peak the chargers would otherwise raise; **$0** where the feed already had room (Caltech day: −1 kW) |
+| More ports on the same service | 60 × 7 kW = 420 kW nameplate on a 150 kW feed; without an EMS the inspector sizes for nameplate (~15 ports) | service upgrade avoided **$50–150k one-time** [est], or 45 more employees served |
+| Energy cost | shift into super-off-peak | $0.5–2k/yr [est]; 0.6 ¢/kWh measured on the Caltech day |
+| LCFS credits (CA) | the site owner can claim credits for workplace charging kWh; most corporates leave this unclaimed | 95 MWh/yr × $0.02–0.05 ≈ **$2–5k/yr** [est]; Noonshift produces the ledger, an aggregator files it |
+| Utility managed-charging / DR | enrolment payments; `/openadr/events` exists | $50–75/port/yr where a program exists [est] |
+| Scope 2 + Scope 3 cat 7 | 23 → 7 kg CO₂/day on solar days; ~2–4 t/yr/site; hourly record for the report | not cash; it is why the sustainability lead co-signs |
+| Employee benefit | guaranteed charge by leave time; fair rotation; no Slack wars over plugs | not cash; it is why facilities stops getting complaints |
+
+The honest sentence: **at a building with spare electrical capacity the recurring cash value is small; at a building that is adding chargers or already near its peak, it is five figures a year plus a one-time upgrade avoided.** Sell to the second kind. `scripts/fit.py` (solutions.md §4) tells you which kind in five seconds from their session log and their bill.
 
 ---
 
@@ -174,7 +219,7 @@ Let **R** = what the driver pays per kWh today at this site (often $0 at workpla
 | **Now / Boost** | slack < 1 h, or Boost pressed | **R** (today's price, unchanged) | nobody — this *is* today |
 | **Flex** | 1–4 h slack | R − d₁ | site's measured saving share |
 | **Green** | ≥ 4 h slack and driver's stated-deadline accuracy ≥ 80 % over last 10 sessions | R − d₂ | site saving share + utility program + carbon revenue |
-| **Emergency** (any band, §4b) | driver marks urgent | **R** — traditional price, no premium, no discount | nobody — this *is* today |
+| **Emergency** (any band, §4b) | driver marks urgent | **R** — traditional price, no premium, no discount ($0 where charging is free) | nobody — this *is* today |
 
 **Funding rule (the one that keeps the site solvent):**
 `Σ driver discounts per month ≤ 50 % × (measured site benefit that month)` where site benefit = energy arbitrage + demand-charge avoidance + utility/DR payments received, all metered. The other 50 % is split site / Noonshift.
@@ -301,31 +346,63 @@ Value stack per port per year. Assumptions: 7 kW port, 1 session/day, 10.6 kWh, 
 
 ---
 
+## 9b. The corporate deal (how the company buys, and what the employee gets when charging is free)
+
+**Who is in the room:** facilities manager (owns the bill and the complaints), sustainability lead (owns the ESG report), sometimes HR (owns the perk), and the electrical contractor if ports are being added. IT is not in the room unless we ask for SSO — don't.
+
+**What they buy**
+
+| Package | Includes | Price | When it fits |
+|---|---|---|---|
+| **Capacity** (the EMS) | EV cap under the building's contracted peak; static safe-share profile on every charger (works when we are offline — solutions.md §5); NEC 625.42 documentation for the permit; move-by + done notifications | **$4/port/month** ($2,880/yr for 60 ports) + **20 % of measured demand-charge avoidance** for 24 months | any building adding ports or within ~20 % of its contracted peak — the majority of new installs |
+| **Clean hours** (the scheduler) | marginal-carbon scheduling, receipts, Scope 2 / Scope 3 cat 7 hourly ledger, LCFS-ready export | **no fixed fee**; `β = 20 %` of measured energy + credit value (`business.md` §7b), i.e. ≈ $0 in January, real in April | every site; it costs the company nothing on a day it saves nothing |
+| **Pilot** | both, one site, 90 days, our data-fit check first | free; the company's own bill before/after is the report | first three customers |
+
+**Why this shape:** the fixed fee is attached to the thing that works every day of the year (capacity), and the variable fee to the thing that doesn't (carbon). A facilities manager can defend $2,880/yr against a five-figure demand-charge line; nobody can defend a carbon SaaS fee in January.
+
+**Rule for sales qualification** (from `scripts/fit.py`, solutions.md §4): `ports × 7 kW × 0.6 > feed headroom` **or** the site is adding ≥ 10 ports **or** the building's bill shows demand ≥ 80 % of contracted. If none is true, offer the clean-hours package only, at `β` — and say the recurring money is small.
+
+**Assumption 3:** the corporate's chargers speak open OCPP 1.6J (Wallbox, Grizzl-E, ABB, EV Connect-backed, Ampeco-backed). Sites locked to a closed network (ChargePoint's own cloud) cannot receive our profiles; those are not addressable until the network exposes power management to third parties. Ask which hardware they have before anything else.
+
+**What the employee gets when charging is free (R = $0)**
+
+| Behaviour | What they get | Why it works without money |
+|---|---|---|
+| Answers "leaving at?" honestly | guaranteed charge by that time; a receipt in kg CO₂ and km | certainty is the perk, not cents |
+| Flexible (≥ 4 h slack) | priority for a **reserved bay** next week; "green hours" badge on the company's ESG page (opt-in) | reserved parking is the most-valued corporate perk there is [est — HR surveys, not re-verified] |
+| Needs to leave early | three emergency bands (§4b), instant, free because charging is free | HR wants zero "I couldn't leave" stories |
+| Car full, still plugged in | "done — please move" notification; move-by time when others wait; no fee unless the company sets one | port fairness is the #1 complaint in corporate lots |
+| Company charges a flat employee rate | §7b applies with `R` = that rate; flexible drivers pay less | the standard case, unchanged |
+
+**What the company gets, in the words they use:** *"Every employee who plugs in leaves charged. We doubled our chargers without touching the transformer. The chargers never raise our peak. The Scope 2 line for charging fell 60–70 % on solar days, and here is the hourly record."*
+
+---
+
 ## 10. The 4-tier benefit system
 
-### Tier 1 — Drivers: less price, same certainty
+### Tier 1 — Drivers (employees): pay less where they pay, and always leave charged
 
 | Benefit | Concrete | Condition |
 |---|---|---|
-| Pay ≤ today | Boost = R, never a surcharge | always |
-| Discount for flexibility | 2–7 ¢/kWh at constrained / peak-arrival sites; non-price perks elsewhere | stated deadline honoured |
+| Pay ≤ today | Boost = R, never a surcharge; R = $0 at free-charging lots | always |
+| Reward for flexibility | 2–7 ¢/kWh where employees pay; reserved bay + green badge where charging is free (§9b) | stated deadline honoured |
 | Never stranded | ≥ 3.5 kWh in the first hour; ≥ 50 % pro-rata always; full charge by stated time | always (test-enforced) |
 | Emergency | Three bands (now / soon / prioritise), all at today's price, instant re-solve | always |
 | Receipt | kg CO₂ first, $ second, method one tap away, labelled estimate | every unplug |
 | Battery | Gentler average charge rate | side effect |
 | Zero effort | One pre-filled question; ignore = still works | always |
 
-### Tier 2 — Charging station / site operator: cheaper power, no grid crowding, credit-ready
+### Tier 2 — The company (owns the building and the chargers): no new peak, more ports, report-ready
 
 | Benefit | Concrete | Where it's real |
 |---|---|---|
 | Lower energy bill | 0.6 ¢/kWh (measured) to 8 ¢/kWh (peak-arrival) | all CA TOU sites; ≈ 0 on flat tariffs |
-| Lower demand charge | up to $298/kW/yr avoided | **constrained sites only** |
+| No new building peak | EV load capped under the contracted peak; $10–16k/yr [est] where chargers would otherwise raise it | buildings adding ports or near their peak (§0b) |
 | More ports on the same feed | NEC 625.42 EMS; avoid $50–150k upgrade | new installs / expansions |
 | Rebate eligibility | CALeVIP / make-ready require load management | CA, similar in NY/MA |
 | New revenue | DR events ($2/kWh ELRP), utility managed-charging ($75/port) | CA programs |
 | Grid crowding | Site never exceeds feed; utility sees a flat load → good standing, future flexibility payments | all |
-| Carbon credits | LCFS per kWh (existing); hourly EACs (future). Noonshift produces the auditable hourly record | CA; report-ready |
+| Carbon credits + ESG lines | LCFS per kWh (CA, often unclaimed by corporates); Scope 2 and Scope 3 cat 7 from the hourly record; hourly EACs later | CA for LCFS; every site for the report |
 | Fail-safe | Software can only lower power, never exceed hardware limits; falls back to normal charging | all |
 
 ### Tier 3 — Environmental

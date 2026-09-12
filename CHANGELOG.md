@@ -7,7 +7,7 @@ All notable changes to this project. Format follows [Keep a Changelog](https://k
 ### Added
 - Open-source scaffolding: `LICENSE` (MIT), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue and PR templates, this changelog.
 - `.docs/ARCHITECTURE.md` — control loop, LP constraints, fail-safe ladder and OCPP flow, with Mermaid diagrams.
-- `.docs/business.md` — break points, edge cases where the scheduler is worse than a dumb charger, the shared-savings pricing formula (§7b), the emergency scale (§4b), 4-tier benefits.
+- `.docs/business.md` — scoped to the corporate-building customer (§0b: who pays, value stack; §9b: the deal, employee incentives when charging is free); break points, edge cases where the scheduler is worse than a dumb charger, the shared-savings pricing formula (§7b), the emergency scale (§4b), 4-tier benefits.
 - `.docs/metrics.md` — every reported metric with its formula; money metrics derived from the shared-savings formula.
 - `.docs/solutions.md` — real-world fixes for every open problem, mapped to code locations; two findings from the data (drivers under-state their stay; `prove.py` plans with perfect foresight).
 
