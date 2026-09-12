@@ -1,0 +1,9 @@
+{
+  "name": "WattWise — Noonshift driver app",
+  "short_name": "WattWise",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFAF7",
+  "theme_color": "#171717",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

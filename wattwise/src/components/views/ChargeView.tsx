@@ -55,7 +55,7 @@ export const ChargeView: React.FC = () => {
                   : 'bg-neutral-100 text-neutral-600'
               }`}
             >
-              Save ₹32 • 25% Off
+              Save $32 • 25% Off
             </span>
           </div>
 
@@ -67,7 +67,7 @@ export const ChargeView: React.FC = () => {
               schedule.chargeMode === 'smart' ? 'text-neutral-400' : 'text-neutral-500'
             }`}
           >
-            Waits for the 11:40 PM clean energy trough. Avoids peak ₹4.70 rates.
+            Waits for the 11:40 PM clean energy trough. Avoids peak $4.70 rates.
           </p>
 
           <div className="grid grid-cols-2 gap-3 text-xs pt-4 border-t border-neutral-800/80">

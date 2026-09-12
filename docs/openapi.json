@@ -289,6 +289,80 @@
     }
    }
   },
+  "/price": {
+   "get": {
+    "summary": "Price Preview",
+    "description": "Deadline sets the price: preview the tier for a ready-by time before the driver commits.",
+    "operationId": "price_preview_price_get",
+    "parameters": [
+     {
+      "name": "departure_at",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "date-time",
+       "title": "Departure At"
+      }
+     },
+     {
+      "name": "kwh_needed",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "number",
+       "default": 8.0,
+       "title": "Kwh Needed"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PricePreview"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/grid/signal": {
+   "get": {
+    "summary": "Grid Signal",
+    "description": "Today's grid signal and tariff by hour, for the driver app's 'why this hour' graph.",
+    "operationId": "grid_signal_grid_signal_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SignalHour"
+         },
+         "type": "array",
+         "title": "Response Grid Signal Grid Signal Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/grid/flex-forecast": {
    "get": {
     "summary": "Flex Forecast",
@@ -582,6 +656,16 @@
       "type": "number",
       "title": "Saved Kgco2"
      },
+     "peak_kw": {
+      "type": "number",
+      "title": "Peak Kw",
+      "default": 0.0
+     },
+     "baseline_peak_kw": {
+      "type": "number",
+      "title": "Baseline Peak Kw",
+      "default": 0.0
+     },
      "note": {
       "type": "string",
       "title": "Note",
@@ -812,6 +896,60 @@
     ],
     "title": "Price"
    },
+   "PricePreview": {
+    "properties": {
+     "slack_hours": {
+      "type": "number",
+      "title": "Slack Hours"
+     },
+     "price": {
+      "$ref": "#/components/schemas/Price"
+     },
+     "tiers": {
+      "items": {
+       "$ref": "#/components/schemas/PriceTier"
+      },
+      "type": "array",
+      "title": "Tiers"
+     }
+    },
+    "type": "object",
+    "required": [
+     "slack_hours",
+     "price",
+     "tiers"
+    ],
+    "title": "PricePreview",
+    "description": "What the driver would pay for a given ready-by, before plugging in. Slack = dwell minus charge time."
+   },
+   "PriceTier": {
+    "properties": {
+     "tier": {
+      "type": "string",
+      "enum": [
+       "green",
+       "standard",
+       "boost"
+      ],
+      "title": "Tier"
+     },
+     "min_slack_hours": {
+      "type": "number",
+      "title": "Min Slack Hours"
+     },
+     "usd_per_kwh": {
+      "type": "number",
+      "title": "Usd Per Kwh"
+     }
+    },
+    "type": "object",
+    "required": [
+     "tier",
+     "min_slack_hours",
+     "usd_per_kwh"
+    ],
+    "title": "PriceTier"
+   },
    "SessionIn": {
     "properties": {
      "connector_id": {
@@ -897,6 +1035,38 @@
     ],
     "title": "SessionOut"
    },
+   "SignalHour": {
+    "properties": {
+     "hour": {
+      "type": "integer",
+      "title": "Hour"
+     },
+     "gco2_per_kwh": {
+      "type": "number",
+      "title": "Gco2 Per Kwh"
+     },
+     "usd_per_kwh": {
+      "type": "number",
+      "title": "Usd Per Kwh"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "marginal",
+       "average"
+      ],
+      "title": "Kind"
+     }
+    },
+    "type": "object",
+    "required": [
+     "hour",
+     "gco2_per_kwh",
+     "usd_per_kwh",
+     "kind"
+    ],
+    "title": "SignalHour"
+   },
    "StatusOut": {
     "properties": {
      "mode": {
@@ -925,6 +1095,28 @@
      "connectors_active": {
       "type": "integer",
       "title": "Connectors Active"
+     },
+     "feed_kw": {
+      "type": "number",
+      "title": "Feed Kw",
+      "default": 0.0
+     },
+     "block_kw": {
+      "type": "number",
+      "title": "Block Kw",
+      "default": 0.0
+     },
+     "sim_time": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sim Time"
      }
     },
     "type": "object",

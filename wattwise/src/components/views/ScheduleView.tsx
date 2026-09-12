@@ -35,7 +35,7 @@ export const ScheduleView: React.FC = () => {
           value={formatCurrency(schedule.smartCost)}
           subtext={`Standard immediate: ${formatCurrency(schedule.normalCost)}`}
           icon={<IndianRupee className="w-4 h-4" />}
-          badge={`Save ₹${schedule.savings}`}
+          badge={`Save ${formatCurrency(schedule.savings)}`}
           badgeType="positive"
         />
 
@@ -80,7 +80,7 @@ export const ScheduleView: React.FC = () => {
                 <span className="font-semibold text-neutral-900 block">Peak Tariff (6:30 PM — 11:00 PM)</span>
                 <span className="text-neutral-500">Grid demand 4.8 – 5.2 GW • Thermal peaking plants</span>
               </div>
-              <span className="font-mono font-bold text-neutral-700 text-sm">₹4.70/kWh</span>
+              <span className="font-mono font-bold text-neutral-700 text-sm">$4.70/kWh</span>
             </div>
 
             <div className="p-3 rounded-xl bg-[#D4F634]/15 border border-[#D4F634]/40 flex items-center justify-between">
@@ -88,7 +88,7 @@ export const ScheduleView: React.FC = () => {
                 <span className="font-bold text-neutral-950 block">Wattwise Window (11:40 PM — 2:10 AM)</span>
                 <span className="text-neutral-600">Grid demand 1.6 – 1.8 GW • Clean wind baseline</span>
               </div>
-              <span className="font-mono font-extrabold text-neutral-950 text-base">₹3.38/kWh</span>
+              <span className="font-mono font-extrabold text-neutral-950 text-base">$3.38/kWh</span>
             </div>
 
             <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-between">
@@ -96,7 +96,7 @@ export const ScheduleView: React.FC = () => {
                 <span className="font-semibold text-neutral-900 block">Morning Shoulder (6:00 AM — 11:00 AM)</span>
                 <span className="text-neutral-500">Commercial ramp • Grid demand 4.2 GW</span>
               </div>
-              <span className="font-mono font-bold text-neutral-700 text-sm">₹4.25/kWh</span>
+              <span className="font-mono font-bold text-neutral-700 text-sm">$4.25/kWh</span>
             </div>
           </div>
         </div>

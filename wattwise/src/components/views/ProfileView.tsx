@@ -135,7 +135,7 @@ export const ProfileView: React.FC = () => {
                 <span className="font-bold text-neutral-900 block">Super Off-Peak (Target Window)</span>
                 <span className="text-neutral-500 font-mono text-[11px]">11:00 PM — 6:00 AM</span>
               </div>
-              <span className="font-mono font-extrabold text-emerald-700 text-sm">₹3.38 / kWh</span>
+              <span className="font-mono font-extrabold text-emerald-700 text-sm">$3.38 / kWh</span>
             </div>
 
             <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-between">
@@ -143,7 +143,7 @@ export const ProfileView: React.FC = () => {
                 <span className="font-bold text-neutral-900 block">Normal / Shoulder</span>
                 <span className="text-neutral-500 font-mono text-[11px]">6:00 AM — 5:00 PM</span>
               </div>
-              <span className="font-mono font-bold text-neutral-700 text-sm">₹3.90 / kWh</span>
+              <span className="font-mono font-bold text-neutral-700 text-sm">$3.90 / kWh</span>
             </div>
 
             <div className="p-3 rounded-xl bg-rose-50/60 border border-rose-200/70 flex items-center justify-between">
@@ -151,7 +151,7 @@ export const ProfileView: React.FC = () => {
                 <span className="font-bold text-neutral-900 block">Peak Demand (Avoided)</span>
                 <span className="text-neutral-500 font-mono text-[11px]">5:00 PM — 11:00 PM</span>
               </div>
-              <span className="font-mono font-bold text-rose-700 text-sm">₹4.70 / kWh</span>
+              <span className="font-mono font-bold text-rose-700 text-sm">$4.70 / kWh</span>
             </div>
           </div>
         </div>

@@ -27,9 +27,19 @@ services:
         condition: service_healthy
     command: uvicorn noonshift.api:app --host 0.0.0.0 --port 8000 --reload
 
-  web:
+  # Both front-ends are static builds: run `npm run build` in web/ and wattwise/ first.
+  # Built without VITE_API_URL they talk to http://localhost:8000, which `api` exposes above.
+  web:  # ops dashboard (Noonshift)
     image: nginx:alpine
     ports: ["3000:80"]
     volumes:
-      - ./web:/usr/share/nginx/html:ro
+      - ./web/dist:/usr/share/nginx/html:ro
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [api]
+
+  driver:  # driver app (WattWise)
+    image: nginx:alpine
+    ports: ["3001:80"]
+    volumes:
+      - ./wattwise/dist:/usr/share/nginx/html:ro
     depends_on: [api]

@@ -19,7 +19,7 @@ export const ChargingTimeline: React.FC = () => {
     {
       time: `${schedule.connectTime || '6:30 PM'} — ${schedule.optimalStart}`,
       title: 'Waiting / Optimized Delay',
-      subtitle: 'Smart hold active. Avoiding evening peak demand (5.2 GW) & ₹4.70/kWh tariff',
+      subtitle: 'Smart hold active. Avoiding evening peak demand (5.2 GW) & $4.70/kWh tariff',
       badge: '5h 10m Pause',
       badgeClass: 'bg-amber-50 text-amber-700 border border-amber-200/60',
       icon: Clock,
@@ -30,7 +30,7 @@ export const ChargingTimeline: React.FC = () => {
       time: `${schedule.optimalStart} — ${schedule.optimalEnd}`,
       title: '⚡ Smart Charging Active',
       subtitle: `Delivering ${schedule.energyNeededKwh} kWh at 11 kW Level 2. Tapping peak wind energy`,
-      badge: 'Lowest Rate ₹3.38',
+      badge: 'Lowest Rate $3.38',
       badgeClass: 'bg-[#D4F634] text-neutral-950 font-bold border border-black/10',
       icon: Zap,
       iconClass: 'bg-neutral-950 text-[#D4F634] animate-pulse ring-2 ring-[#D4F634]',

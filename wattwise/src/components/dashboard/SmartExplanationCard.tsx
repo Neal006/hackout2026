@@ -20,10 +20,10 @@ export const SmartExplanationCard: React.FC = () => {
           </div>
 
           <p className="text-xs text-neutral-600 leading-relaxed">
-            Most EV owners plug in at <strong>6:30 PM</strong> when coming home. Standard chargers immediately begin pulling 11 kW during the grid’s worst evening peak (5.2 GW regional load, ₹4.70/kWh tariff). 
+            Most EV owners plug in at <strong>6:30 PM</strong> when coming home. Standard chargers immediately begin pulling 11 kW during the grid’s worst evening peak (5.2 GW regional load, $4.70/kWh tariff). 
           </p>
           <p className="text-xs text-neutral-600 leading-relaxed">
-            Because you gave Wattwise until <strong>11:00 AM tomorrow</strong>, the system safely pauses the session and dispatches charge current into the <strong>11:40 PM — 2:10 AM</strong> valley. You wake up fully charged to 90%, having saved <strong>₹32</strong> and avoided <strong>4.2 kg CO₂</strong> with zero sacrifice.
+            Because you gave Wattwise until <strong>11:00 AM tomorrow</strong>, the system safely pauses the session and dispatches charge current into the <strong>11:40 PM — 2:10 AM</strong> valley. You wake up fully charged to 90%, having saved <strong>$32</strong> and avoided <strong>4.2 kg CO₂</strong> with zero sacrifice.
           </p>
 
           <div className="pt-2 flex flex-wrap items-center gap-4 text-xs text-neutral-500 font-mono">

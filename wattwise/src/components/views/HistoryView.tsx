@@ -1,14 +1,15 @@
 import React from 'react';
 import { CheckCircle2 } from 'lucide-react';
-import { MOCK_HISTORY_SESSIONS } from '../../utils/mockData';
+import { useWattwise } from '../../context/WattwiseContext';
 import { formatCurrency, formatCo2, formatKwh } from '../../utils/formatters';
 
 export const HistoryView: React.FC = () => {
-  const sessions = MOCK_HISTORY_SESSIONS;
+  const { history: sessions, schedule } = useWattwise();
 
-  const totalSaved = sessions.reduce((acc, s) => acc + s.savings, 0) + 32;
-  const totalCo2 = (sessions.reduce((acc, s) => acc + s.co2AvoidedKg, 0) + 4.2).toFixed(1);
-  const totalEnergy = (sessions.reduce((acc, s) => acc + s.energyKwh, 0) + 28.4).toFixed(1);
+  const totalSaved = sessions.reduce((acc, s) => acc + s.savings, 0) + schedule.savings;
+  const totalNormal = sessions.reduce((acc, s) => acc + s.normalCost, 0) + schedule.normalCost;
+  const totalCo2 = (sessions.reduce((acc, s) => acc + s.co2AvoidedKg, 0) + schedule.co2AvoidedKg).toFixed(1);
+  const totalEnergy = (sessions.reduce((acc, s) => acc + s.energyKwh, 0) + (schedule.hasOptimized ? schedule.energyNeededKwh : 0)).toFixed(1);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -21,11 +22,11 @@ export const HistoryView: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-[#D4F634] inline-block" />
               <span className="text-xs font-mono uppercase tracking-widest text-[#D4F634] font-bold">
-                September 2026 Optimization Summary
+                Today’s Optimization Summary
               </span>
             </div>
             <span className="text-xs text-neutral-400 font-mono">
-              6 Sessions Tracked
+              {sessions.length} Sessions Tracked
             </span>
           </div>
 
@@ -37,7 +38,7 @@ export const HistoryView: React.FC = () => {
                   {formatCurrency(totalSaved)}
                 </span>
                 <span className="text-xs text-emerald-400 font-semibold font-mono">
-                  26.4% avg reduction
+                  {totalNormal > 0 ? `${Math.round((100 * totalSaved) / totalNormal)}% vs charge-now` : "estimate"}
                 </span>
               </div>
             </div>
@@ -49,7 +50,7 @@ export const HistoryView: React.FC = () => {
                   {formatKwh(Number(totalEnergy))}
                 </span>
                 <span className="text-xs text-neutral-400 font-mono">
-                  at 11 kW L2
+                  at 7 kW L2
                 </span>
               </div>
             </div>
@@ -61,7 +62,7 @@ export const HistoryView: React.FC = () => {
                   {formatCo2(Number(totalCo2))}
                 </span>
                 <span className="text-xs text-neutral-400 font-mono">
-                  ~114 km offset
+                  vs charging at plug-in
                 </span>
               </div>
             </div>
@@ -81,7 +82,7 @@ export const HistoryView: React.FC = () => {
             </p>
           </div>
           <span className="text-xs font-mono font-bold bg-neutral-100 text-neutral-700 px-3 py-1 rounded-full">
-            100% On-Schedule Rate
+            {sessions.length ? `${Math.round((100 * sessions.filter((s) => s.targetReached >= 95).length) / sessions.length)}% On-Schedule Rate` : "No sessions yet"}
           </span>
         </div>
 
@@ -113,6 +114,13 @@ export const HistoryView: React.FC = () => {
                   <span>{session.charger}</span>
                   <span>•</span>
                   <span>Target: {session.targetReached}% reached</span>
+                  {session.targetReached < 95 && (
+                    <span className="text-rose-600 font-semibold">• left {(session.energyKwh * (100 / Math.max(1, session.targetReached)) - session.energyKwh).toFixed(1)} kWh short of stated need</span>
+                  )}
+                  <span>•</span>
+                  <span title="Receipt = metered kWh × grid signal and tariff, vs the same car charged at full power from plug-in. Marginal emissions from WattTime; an estimate, not a certificate.">
+                    estimate · method ⓘ
+                  </span>
                 </div>
               </div>
 

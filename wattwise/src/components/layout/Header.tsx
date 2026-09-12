@@ -8,7 +8,9 @@ import {
 import { useWattwise } from '../../context/WattwiseContext';
 
 export const Header: React.FC = () => {
-  const { currentNav, openConnectModal, resetDemo } = useWattwise();
+  const { currentNav, openConnectModal, resetDemo, simTime, connected, hourly } = useWattwise();
+  const nowHour = simTime ? new Date(simTime).getHours() : -1;
+  const nowSignal = hourly.find((h) => h.rawHour === nowHour);
 
   const navTitles: Record<string, { title: string; subtitle: string }> = {
     dashboard: { title: 'Overview', subtitle: 'Real-time charging status & optimal window' },
@@ -45,15 +47,15 @@ export const Header: React.FC = () => {
           <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-neutral-200/80 text-xs font-mono shadow-xs">
             <Clock className="w-3.5 h-3.5 text-neutral-500" />
             <span className="text-neutral-500">Local Sim:</span>
-            <span className="font-semibold text-neutral-900">Sat, 6:30 PM</span>
+            <span className="font-semibold text-neutral-900">{simTime ? new Date(simTime).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : connected ? "…" : "offline"}</span>
           </div>
 
           {/* Grid Signal Badge */}
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-neutral-200/80 text-xs shadow-xs">
             <Activity className="w-3.5 h-3.5 text-amber-500" />
             <span className="text-neutral-500">Grid:</span>
-            <span className="font-semibold text-neutral-900 font-mono">5.2 GW Peak</span>
-            <span className="text-[11px] font-mono text-neutral-400">(₹4.55/kWh)</span>
+            <span className="font-semibold text-neutral-900 font-mono">{nowSignal ? `${nowSignal.renewablePercent}% clean` : "—"}</span>
+            <span className="text-[11px] font-mono text-neutral-400">{nowSignal ? `($${nowSignal.tariff.toFixed(2)}/kWh)` : ""}</span>
           </div>
 
           {/* Quick Connect CTA */}
