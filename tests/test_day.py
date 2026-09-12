@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
@@ -13,15 +14,16 @@ from noonshift.models import OutageIn
 from noonshift.sim import Sim, load_sessions
 
 EARLY = {7, 23}  # seed.py: told us ~17:00, actually leave ~13:00
+DATA = Path(__file__).parent / "data"  # frozen copy of the seeded placeholder day: data/ may hold real data later
 
 
 def fresh():
     S.clear()
-    S.update(site=json.load(open("data/site.json")), signal=json.load(open("data/signal.json")),
-             tariff=json.load(open("data/tariff.json")), plan={}, plan_at=None, baseline={}, impact={}, hist={}, mode="live",
+    S.update(site=json.load(open(DATA / "site.json")), signal=json.load(open(DATA / "signal.json")),
+             tariff=json.load(open(DATA / "tariff.json")), plan={}, plan_at=None, baseline={}, impact={}, hist={}, mode="live",
              ladder={"live": True, "cached": True, "tariff": True, "deadline": True}, live_lost_at=None,
              last_solve_at=None, dr=[], clients=set(), next_id=1000)
-    S["sim"] = Sim(load_sessions(), S["site"])
+    S["sim"] = Sim(load_sessions(DATA / "sessions.json"), S["site"])
 
 
 def headroom_now():
