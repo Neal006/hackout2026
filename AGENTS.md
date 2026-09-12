@@ -29,17 +29,17 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - `noonshift/sim.py` — `Sim`, `Connector` (taper from 80% SoC), `load_sessions()`.
 - `noonshift/models.py` — pydantic REST bodies + WS frames (contract with front-end). `SignalHour` added for `GET /grid/signal` (hourly MOER g/kWh + $/kWh; frames unchanged).
 - `web/src/context/GlobalStateContext.jsx` — ops app state: opens `/ws`, polls `/sites/site-1/impact|status`, derives the page shape (siteDetail/connectors Gantt on a 06–22 axis, sessions, alerts from events, chargersList); `triggerEvent()` maps demo buttons → `/demo/*`, prioritize → `/sessions/{id}/boost`.
-- `ROADMAP.md` — plain-language plan (§0 status, §1 driver inputs, §3 emergency rules, §4 price flip, §5 evidence runs, §7 CI, §8 order). `.github/workflows/ci.yml` — backend job + web/wattwise matrix.
+- `.docs/ROADMAP.md` — plain-language plan (§0 status, §1 driver inputs, §3 emergency rules, §4 price flip, §5 evidence runs, §7 CI, §8 order). `.github/workflows/ci.yml` — backend job + web/wattwise matrix.
 - `wattwise/src/api/noonshift.ts` — driver app client + hand-copied types; `connectWs()`, `onSimDay()` (ready-by is built on the **sim** day and must be > sim now).
 - `wattwise/src/context/WattwiseContext.tsx` — driver state: `POST /sessions` on the highest free connector (replayed sessions use c01–c36), `/live` polled every 2 s for the receipt, meter/plan frames for kW/kWh/window; unplug/day_reset moves the session to History.
 - `noonshift/ocpp_gateway.py`, `db.py`, `seed.py`, `test_loop.py` — Tirth's; unchanged by Neal's lane.
 - `scripts/prove.py` — two real-loop replays (charge-now vs Noonshift), slide-1 table, gate exit code.
 - `scripts/smoke.py` — e2e without a browser: driver REST (`/price`, `/sessions`, `/boost`, `/live`) + `/ws` as the ops app sees it + all four `/demo/*` + ladder drop/restore; plugs 2 extra cars before the demo beats so early-unplug/boost always have a target.
-- `pitch/` — `deck.md` (slide list, all sourced), `demo-script.md` (4 min, 7 beats, what the audience sees per beat, failure modes), `hard-questions.md` (answers tied to code + tests).
+- `.docs/pitch/` — `deck.md` (slide list, all sourced), `demo-script.md` (4 min, 7 beats, what the audience sees per beat, failure modes), `hard-questions.md` (answers tied to code + tests).
 - `scripts/fetch_data.py` — WattTime / ACN-Data / CAISO fallback → `data/*.json`.
 - `tests/test_scheduler.py`, `test_impact.py`, `test_perf.py`, `test_day.py` (full day + demo scenarios), `tests/fixtures/baseline_1405.json`.
-- `neal-plan.md` — Neal's lane: status vs gates, LP deviations and why, edge-case→test matrix, open items.
-- `team-plan.md`, `noonshift-proposal.md`, `ev-green-charging-ideation.html` — plan and evidence base.
+- `.docs/neal-plan.md` — Neal's lane: status vs gates, LP deviations and why, edge-case→test matrix, open items.
+- `.docs/team-plan.md`, `.docs/noonshift-proposal.md`, `ev-green-charging-ideation.html` — plan and evidence base.
 
 ## Conventions
 - Every factual claim in docs must cite a reference that was actually opened; mark secondary/abstract-only sources.
@@ -77,6 +77,7 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - 2026-09-12 — Session data = ACN 2019-04-09 re-dated onto the 2026 signal day; kwh_needed = delivered energy, stated departure = the driver's own input (early leavers kept).
 
 ## Changelog
+2026-09-13 | Open-source docs pass: README rewrite (Mermaid, quick start, results, OCPP 1.6J badge), LICENSE/CONTRIBUTING/CODE_OF_CONDUCT/SECURITY/CHANGELOG, issue+PR templates, .docs/ARCHITECTURE.md (6 validated diagrams), .docs/README.md index; all human docs moved to .docs/; business.md (break points, §4b emergency scale at R, §7b shared-savings formula), metrics.md, solutions.md (real-world fixes → code; drivers under-state stay 29/36; prove.py plans with perfect foresight) | README.md, .docs/, LICENSE, CONTRIBUTING.md, SECURITY.md, CHANGELOG.md, .github/ | All Mermaid blocks validated with mermaid@11 + jsdom; ROADMAP emergency pricing reconciled to "R, no quota".
 2026-09-13 | ROADMAP.md (layman plan: driver inputs, emergency, incentives, Tier 0/1, order of work) + GitHub Actions CI | ROADMAP.md, .github/workflows/ci.yml, wattwise/src/context/WattwiseContext.tsx, web/src/pages/ImpactView.jsx | CI = pytest + prove gate + smoke against live uvicorn + contract-diff + lint/build both apps; lint fixes only (refs not read during render, Card hoisted)
 2026-09-13 | team-plan.md integration pass: price preview, peak-avoided, fail-safe banner, smoke gate, pitch/ | api.py, models.py, web/, wattwise/, scripts/smoke.py, scripts/dev.ps1, pitch/, README | Baseline peak = sum of frozen per-session baselines clipped at the feed (label "est."); cost-savings slide left TODO for lack of a source
 2026-09-13 | Wire WattWise (driver) + Nandini ops dashboard to the backend; merge Nandini | web/src/{context,pages,components}, wattwise/src/{api,context,components,utils}, api.py, models.py, docker-compose.yml, web/nginx.conf | No WS frame changes, one additive endpoint; keep side effects out of React state updaters (StrictMode runs them twice)

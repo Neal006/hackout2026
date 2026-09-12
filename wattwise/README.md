@@ -1,32 +1,34 @@
-# React + TypeScript + Vite
+# WattWise driver app (`wattwise/`)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + TypeScript + Vite + Tailwind. What the driver sees: "Ready by when?" at plug-in → the planned charging window and ETA → live kW → the receipt ($ and kg CO₂ vs charging at plug-in, labelled estimate). Boost ("charge now") is one button.
 
-Currently, two official plugins are available:
+## Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+# backend first, from the repo root
+python -m uvicorn noonshift.api:app --port 8000 --reload
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+cd wattwise
+npm ci
+npm run dev        # http://localhost:5174
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Dev proxies REST and `/ws` to `localhost:8000` (`vite.config.ts`). Production build: set `VITE_API_URL`.
+
+## Backend calls
+
+| Action | Call |
+|---|---|
+| plug in | `POST /sessions {connector_id, departure_at, kwh_needed?}` |
+| charge now | `POST /sessions/{id}/boost` |
+| live view | `GET /sessions/{id}/live` + `/ws` frames |
+| "why this hour" graph | `GET /grid/signal` |
+
+Models: [`../docs/openapi.json`](../docs/openapi.json). Planned inputs (vehicle form, current %, emergency bands): [`../.docs/ROADMAP.md`](../.docs/ROADMAP.md) §1.
+
+## Checks
+
+```bash
+npm run lint
+npm run build      # runs tsc -b first, so this is also the type check
+```

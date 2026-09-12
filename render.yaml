@@ -1,4 +1,4 @@
-# Render Blueprint: one free Docker web service + one free Postgres. See HOSTING.md.
+# Render Blueprint: one free Docker web service + one free Postgres. See .docs/HOSTING.md.
 services:
   - type: web
     name: noonshift-api

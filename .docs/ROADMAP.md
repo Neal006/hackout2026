@@ -79,7 +79,7 @@ The layout already collapses correctly below 768 px (bottom nav, hidden sidebar,
 
 A driver taps "I need to leave earlier" at time *t* with a new departure *d* and an urgency level.
 
-1. **Under 15 minutes to go (d − t < 15 min): nothing clever is possible.** The car goes to full power immediately (this is the *Emergency Boost* from `business.md` §4: free, once per driver per 30 days). The app says what the driver will have when they leave. The brain re-solves everyone else around it.
+1. **Under 15 minutes to go (d − t < 15 min): nothing clever is possible.** The car goes to full power immediately (the *Emergency* band from `business.md` §4b: priced at today's rate R, no premium, no quota). The app says what the driver will have when they leave. The brain re-solves everyone else around it.
 2. **15 minutes or more: reschedule, cleanest-first.** The ready-by moves to *d*; the brain re-solves at once. It already puts energy in the cleanest slots that still fit before *d*; nothing new to invent there. What is new: **urgency decides who gives way if the site is tight** —
    - *Need to leave* (default): same priority as everyone; may share a small shortfall if the site is oversubscribed.
    - *Urgent*: this car's shortfall is weighted heavier than others' — the solver takes power from cars with more slack first.
@@ -87,7 +87,7 @@ A driver taps "I need to leave earlier" at time *t* with a new departure *d* and
    In the code this is one number per car in the fairness term of `solve()`.
 3. **Always true, whatever the level:** the site never exceeds its feed; no car is ever paused (min 1.4 kW); the first-hour floor applies to everyone.
 4. **What the driver sees back:** the new window, the ETA, and — honestly — the kWh they will *not* get if the request cannot be fully met.
-5. **Abuse guard:** the free Emergency Boost is once per 30 days; further "emergencies" are ordinary Boosts at today's price. The stated-deadline accuracy over the last 10 sessions (from `business.md` §7) is the input for the Green tier, so lying about times costs the driver the discount, nothing else.
+5. **Abuse guard:** every emergency band is priced at today's rate and forfeits the discount (`business.md` §4b), so there is nothing to gain by pressing it without need. The stated-deadline accuracy over the last 10 sessions (from `business.md` §7) is the input for the Green tier, so lying about times costs the driver the discount, nothing else.
 
 Ops side sees every emergency as an alert with the level, and the Gantt reshuffles within a re-solve (< 100 ms).
 
@@ -102,7 +102,7 @@ Principle from `business.md` §7: **anchor at today's price, discount for flexib
 | Now / Boost | less than 1 h of slack, or Boost pressed | today's price (R) |
 | Flex | 1–4 h slack | R − d₁ |
 | Green | ≥ 4 h slack and the driver's stated times have been accurate ≥ 80 % over the last 10 sessions | R − d₂ |
-| Emergency | once a month | R, no premium, top priority |
+| Emergency | any band, any time | R (today's rate), no premium, no discount, priority by band |
 
 **Fix needed in code:** `scheduler.price()` today charges Boost *more* than standard ($0.40 vs $0.25). Flip it to the table above. The discounts d₁, d₂ are funded from the site's *measured* saving (`business.md` §7 funding rule: driver discounts ≤ 50 % of measured site benefit) — on the Caltech-like day that saving is tiny (0.6 ¢/kWh), so **the money story only works at a constrained site**; say that on stage rather than promise a discount the site cannot fund.
 
