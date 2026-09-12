@@ -1,0 +1,23 @@
+# Render Blueprint: one free Docker web service + one free Postgres. See HOSTING.md.
+services:
+  - type: web
+    name: noonshift-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: SIM_SPEED
+        value: "120"          # 0.1 CPU on the free box: play the day in 12 min, not 3
+      - key: OCPP
+        value: "0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: noonshift-db
+          property: connectionString
+
+databases:
+  - name: noonshift-db
+    plan: free              # 1 GB, expires 30 days after creation; the API runs without it too
+    databaseName: noonshift
+    user: noonshift

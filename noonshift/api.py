@@ -10,6 +10,7 @@ import random
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import TypeAdapter
 
 from . import db, scheduler, seed
@@ -220,6 +221,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title="Noonshift", version="0.1.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])  # front-end lives on another host
 
 
 @app.get("/health")

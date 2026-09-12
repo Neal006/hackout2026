@@ -64,6 +64,9 @@ def gen():
 async def load():
     from . import db
     await db.connect()
+    if not db.pool:
+        print("no DATABASE_URL: running without Postgres")
+        return
     site = json.load(open("data/site.json"))
     sessions = json.load(open("data/sessions.json"))
     async with db.pool.acquire() as c:
