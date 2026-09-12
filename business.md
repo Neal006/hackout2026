@@ -11,7 +11,7 @@ Every $ figure below that is not from `prove.py` is marked **[est]** and should 
 1. **The carbon story is real but the tariff already does most of the work.** On the Caltech day the site saves $2.20. That funds nothing. Do not build the business on energy arbitrage.
 2. **The money is in capacity**: demand charges, avoided service upgrades, and the permit/rebate rule that lets a site install more ports than its feed supports *if* software governs them. We have not measured a site like that yet.
 3. **Boost must equal today's price, never exceed it.** `price()` currently makes Boost a 60 % surcharge over standard. That breaks the "never worse than today" promise.
-4. **Emergency is the one edge case where Noonshift is strictly worse than a dumb charger** — a car that plugged in 30 min ago may hold 0.3 kWh instead of 3.5 kWh. Fix it with a first-hour floor and a free Emergency Boost, and say so in the pitch before someone asks.
+4. **Emergency is the one edge case where Noonshift is strictly worse than a dumb charger** — a car that plugged in 30 min ago may hold 0.3 kWh instead of 3.5 kWh. Fix it with a first-hour floor and an emergency scale priced at today's rate (§4b), and say so in the pitch before someone asks.
 5. **The global story is a grid-type story**, not a California story. Solar-heavy grids with daytime dwell (CA, Australia, India, Spain) fit workplaces. Wind-heavy grids (Texas, UK, Denmark, Germany) fit overnight depots. Hydro/nuclear grids (France, Quebec, Norway) have no carbon lever at all — only capacity.
 
 ---
@@ -58,7 +58,7 @@ Be honest about these on the "hard questions" slide. Each row: who is hurt, by h
 
 | # | Edge case | Who loses | How much | Fix / mitigation |
 |---|---|---|---|---|
-| A | **Emergency early leave** (plugged in 30 min ago, stated 17:30, must go now) | Driver | Holds ~0.3 kWh instead of 3.5 kWh (≈ 3 km vs 15 km) | First-hour floor + free Emergency Boost (§4) |
+| A | **Emergency early leave** (plugged in 30 min ago, stated 17:30, must go now) | Driver | Holds ~0.3 kWh instead of 3.5 kWh (≈ 3 km vs 15 km) | First-hour floor + emergency scale at traditional price (§4, §4b) |
 | B | **Winter / gas-marginal day** (MOER flat ~450 g all day) | Site | Carbon −1.8 %, $ ≈ 0, but still paying SaaS + signal licence → **net negative** | Price SaaS on capacity, not carbon; tell the site the seasonal range |
 | C | **Overnight-off-peak tariff** (UK, Germany, India, most of the world) at a daytime site | Site | Cost says night, carbon says day, cars are gone at night → both levers ≈ 0 | Wrong site type. Sell depots there, not workplaces |
 | D | **Cars > chargers** (queue for plugs) | Site throughput, waiting drivers | Slow charging holds the plug; a car that could be done in 2 h sits 8 h; queue grows | "Move-by" deadline + port-turnover penalty; without it, don't sell to oversubscribed lots |
@@ -86,14 +86,34 @@ Be honest about these on the "hard questions" slide. Each row: who is hurt, by h
 |---|---|---|---|
 | Energy at 09:00 | 30 min × 7 kW = **3.5 kWh** (~15 km) | Floor = 0.5 × pro-rata(12 kWh, 30 min of 9 h) ≈ **0.33 kWh** (~1.5 km) | First-hour floor: min(need, 3.5 kWh) in first 60 min → **3.5 kWh** |
 | What she can do | Drive to the clinic | Cannot | Drive to the clinic |
-| Cost to her | $0.25 × 3.5 | — | $0 premium (Emergency Boost is free, 1/month) |
+| Cost to her | $0.25 × 3.5 | — | $0.25 × 3.5 — same as traditional (§4b) |
 | Cost to the site | — | — | ~0.3 kWh/car moved into a slightly dirtier hour ≈ 2–3 % of the carbon saving [est] |
 
 **Rules to adopt:**
 1. **First-hour floor.** Every car gets `min(kwh_needed, 3.5 kWh)` within 60 min of plug-in regardless of signal. Cheap insurance; buys trust; costs ~2–3 % of carbon saving [est — one prove.py run with the floor added will give the real number].
-2. **Emergency Boost is free.** One per driver per 30 days, no premium, instant re-solve as ASAP with priority. After that, Boost = today's rate (not a surcharge).
+2. **Emergency price = traditional price, always.** Every emergency band (§4b) pays exactly R — today's rate — no premium, no discount, no monthly quota. Emergency is emergency.
 3. **Never below the dumb charger over any 60-min window** as a hard promise. Encode it as a test.
 4. **Fleet vehicles** (delivery vans, shuttles) get a higher floor or are excluded from deferral — a van that can't leave is lost revenue for the customer, not an inconvenience.
+
+### 4b. The emergency scale (three bands, one price)
+
+The LP understands two things per car: a **deadline** and a **progress floor**. Urgency is those two knobs turned. Internally `u ∈ [0, 1]`; `new_deadline = now + (1 − u) × (old_deadline − now)`, `floor = 0.5 + 0.5u`.
+
+| Band | Driver sees | Scheduler does | Price |
+|---|---|---|---|
+| **Extreme (8–10)** | "Leaving now" | deadline = now → full power immediately, first claim on site headroom; other cars keep their floors | **R** |
+| **Mid (4–7)** | "Leaving in about an hour" (time picker) | deadline = now + 1–2 h; the LP picks the cleanest slots inside that window and fills the rest — no manual dirty/green ratio needed | **R** |
+| **Low (1–3)** | "Not urgent — just prioritise me" | deadline unchanged; floor raised to 80–100 % of pro-rata + priority weight, so it wins ties for clean slots and headroom | **R** |
+
+Every emergency band pays the traditional rate. Discounts (§7b) exist only for sessions that were never marked urgent — that is the honesty mechanism: pressing any emergency button forfeits the discount, so nobody presses it to game the queue.
+
+**Holes and answers:**
+- *Twenty people press "now" at once.* Site headroom ≈ 110–130 kW ÷ 7 kW ≈ 17 cars at full power. The LP shares the shortfall fairly; the promise is "as fast as the site can," not "full power." Say that in the UI.
+- *Don't show a 1–10 slider.* Nobody knows if a sick kid is a 6 or an 8. Three buttons; derive `u`.
+- *Low band costs the other cars a little flexibility.* Fine for 1–2 cars; cap it, or make priority a perk earned by honest deadlines.
+- *Fleet vehicles* default to Extreme — a van that can't leave is lost revenue, not an inconvenience.
+
+**Code:** generalise `POST /sessions/{id}/boost` to `POST /sessions/{id}/urgency {level, leave_at?}`; add keyword-only per-car `floor_alpha` (default 0.5) and `priority` (default 1.0) to `solve()` — two lines in the floor constraint and the tie-break cost; mark the session `urgent = True` so `price()` returns R. One test: `u = 1` → full power next slot; `u = 0, floor 0.9` → ≥ 90 % pro-rata at every checkpoint.
 
 ---
 
@@ -154,7 +174,7 @@ Let **R** = what the driver pays per kWh today at this site (often $0 at workpla
 | **Now / Boost** | slack < 1 h, or Boost pressed | **R** (today's price, unchanged) | nobody — this *is* today |
 | **Flex** | 1–4 h slack | R − d₁ | site's measured saving share |
 | **Green** | ≥ 4 h slack and driver's stated-deadline accuracy ≥ 80 % over last 10 sessions | R − d₂ | site saving share + utility program + carbon revenue |
-| **Emergency** | 1/month, free | R, no premium, ASAP priority | site (goodwill line item) |
+| **Emergency** (any band, §4b) | driver marks urgent | **R** — traditional price, no premium, no discount | nobody — this *is* today |
 
 **Funding rule (the one that keeps the site solvent):**
 `Σ driver discounts per month ≤ 50 % × (measured site benefit that month)` where site benefit = energy arbitrage + demand-charge avoidance + utility/DR payments received, all metered. The other 50 % is split site / Noonshift.
@@ -207,7 +227,7 @@ S_i = max(S_i, 0)                              a bad forecast never creates a ne
 ```
 discount_i = α × S_i / E_i       ($/kWh)
 price_i    = R − discount_i      (no slack / Boost → S_i = 0 → price = R)
-Emergency  = R, no premium, 1 per month
+Emergency  = R, any band, no premium, no discount (§4b)
 ```
 
 Show the *estimated* discount at plug-in (the LP already knows the planned cost), settle the *actual* one on the receipt. A driver who leaves early shifted less, so gets less — no gaming, no penalty.
@@ -290,7 +310,7 @@ Value stack per port per year. Assumptions: 7 kW port, 1 session/day, 10.6 kWh, 
 | Pay ≤ today | Boost = R, never a surcharge | always |
 | Discount for flexibility | 2–7 ¢/kWh at constrained / peak-arrival sites; non-price perks elsewhere | stated deadline honoured |
 | Never stranded | ≥ 3.5 kWh in the first hour; ≥ 50 % pro-rata always; full charge by stated time | always (test-enforced) |
-| Emergency | Free Boost 1/month, instant priority | always |
+| Emergency | Three bands (now / soon / prioritise), all at today's price, instant re-solve | always |
 | Receipt | kg CO₂ first, $ second, method one tap away, labelled estimate | every unplug |
 | Battery | Gentler average charge rate | side effect |
 | Zero effort | One pre-filled question; ignore = still works | always |

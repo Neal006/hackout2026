@@ -100,6 +100,31 @@ CO₂ is global; NOx, SO₂ and PM2.5 are local. Gas plants (the marginal plant 
 | Fairness (worst car) | `z = max_i s_i / E_need_i` (the LP's own variable) | 0 | 0 |
 | Fairness (spread) | Gini of `E_delivered / E_need` | 0 | 0 |
 | **Battery gentleness** | `mean C-rate = mean kW / battery kWh`; `hours at SoC > 80 %` | lower | ~0.1 C vs 0.12 C [est]; slower is kinder |
+| **Emergency rate** | `sessions marked urgent (any band) / n` | < 10 % | demo only |
+| Emergency band mix | share of urgent sessions at now / soon / prioritise | mostly "prioritise" | — |
+| **Price parity check** | `max_i price_i ≤ R` over all sessions, urgent or not | always true | test-enforced once `price()` is rewritten |
+
+---
+
+## 6b. Money metrics from the shared-savings formula (business.md §7b)
+
+One measured number per session, `S_i`, split three ways. Every metric below is derived from it.
+
+| Metric | Formula | Caltech day | Notes |
+|---|---|---|---|
+| **Session saving** | `S_i = Σ_t (E_t^base − E_t^ns) × c_t + slice of ΔD + slice of G`, floored at 0 | site total $2.20; ≈ $0.06/car | `impact_detail()` already has the two cost numbers |
+| Saving rate | `s = Σ S_i / Σ E_i` ($/kWh) | **0.6 ¢/kWh** | the number that decides whether cash discounts make sense at this site |
+| **Driver discount** | `d_i = α × S_i / E_i`; urgent sessions → `d_i = 0` | α = 0.5 → 0.3 ¢/kWh | show estimated at plug-in, actual on receipt |
+| Driver price | `price_i = R − d_i` | R = $0.25 → $0.247 | never above R, by construction |
+| **Site extra profit** | `Δπ_site = (1 − α − β) × Σ S_i` | α 0.5, β 0.2 → **+$0.66/day** | always ≥ 0 — the "profit every session" claim |
+| Noonshift revenue | `π_noon = β × Σ S_i` | $0.44/day | paid on results |
+| Driver pool | `α × Σ S_i` | $1.10/day | — |
+| Discount funding ratio | `Σ d_i E_i / Σ S_i` | = α = 0.5 | must be ≤ 1 − β; a hardcoded 7 ¢ tier gives **11.9** at this site → unfunded |
+| Discount lost to urgency | `Σ_{urgent} α × S_i^would-have` | 0 (no urgent sessions in replay) | what the honesty mechanism costs drivers who press the button |
+| **Shifted energy** | `E^shifted = ½ Σ_t \|E_t^base − E_t^ns\|` (kWh) | from `meter_history()` | the base for allocating ΔD and G per car |
+| Site-type check | `s ≥ 4 ¢/kWh` → cash tiers; else non-price perks | Caltech: perks | one line on the ops dashboard |
+
+Same formulas at an evening-arrival site [est]: `s ≈ 12 ¢/kWh`, driver 4.8 ¢/kWh, site +$18/day. At a power-limited site [est]: `s ≈ 22 ¢/kWh`, driver 8.7 ¢/kWh, site +$33/day.
 
 ---
 
@@ -141,6 +166,8 @@ Caltech day: `0.4×69 + 0.3×1 + 0.2×~75 + 0.1×100 ≈ 53`. Weights are ours; 
 | **Health damage $** | ❌ | store WattTime `health_damage` in `fetch_data.py signal`; sum in `impact()` |
 | NOx / PM | ❌ | 2 constants × kWh moved off gas hours; label [est] |
 | First-hour guarantee | ❌ | LP constraint + test (business.md §4) |
+| Emergency bands, price parity | ❌ | `/sessions/{id}/urgency`, `floor_alpha` / `priority` extras, `urgent` flag (business.md §4b) |
+| `S_i`, discount, site profit | cost numbers exist in `impact_detail()` | `price(R, S_i, E_i, alpha)`; ~10 lines |
 | Green Score / SII | ❌ | 2 formulas in `api.py` receipt |
 
 ---
