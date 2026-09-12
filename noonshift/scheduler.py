@@ -172,13 +172,45 @@ def solve(cars, site, signal, tariff, now) -> dict[str, list[float]]:
     return solve_lp(cars, site, signal, tariff, now)[0]
 
 
+def _totals(plan, moer, price, tariff):
+    """kWh, $ (energy + this day's share of block overage), kg CO2 and peak kW of one {cid: [kW per slot]} dict."""
+    site_kw = np.zeros(HORIZON)
+    for p in plan.values():
+        a = np.asarray(list(p)[:HORIZON], dtype=float)
+        a = np.where(np.isfinite(a), a, 0.0)
+        site_kw[:a.size] += np.maximum(a, 0.0)
+    kwh = float(site_kw.sum() * SLOT_H)
+    usd = float((site_kw * SLOT_H * price).sum())
+    kg = float((site_kw * SLOT_H * moer / 1000).sum())
+    peak = float(site_kw.max()) if site_kw.size else 0.0
+    block = tariff.get("block_kw")
+    if block is not None:
+        usd += max(0.0, peak - block) * tariff.get("block_price", 0.0) * tariff.get("overage_multiplier", 2.0) / DAYS_PER_MONTH
+    return {"kwh": kwh, "usd": usd, "kgco2": kg, "peak_kw": peak}
+
+
+def impact_detail(plan, baseline, signal, tariff) -> dict:
+    """Both totals plus the savings. Energy-matched: the baseline is scaled to the plan's kWh, so a plan that
+    delivered less (shortfall) cannot book the undelivered energy as a saving. No signal => kg CO2 is 0, not guessed."""
+    moer, price = _per_slot(signal.get("moer")), _per_slot(tariff.get("price_per_kwh"))
+    p, b = _totals(plan, moer, price, tariff), _totals(baseline, moer, price, tariff)
+    ratio = p["kwh"] / b["kwh"] if b["kwh"] > 0 else 0.0
+    return {"plan": p, "baseline": b, "energy_matched": abs(p["kwh"] - b["kwh"]) < 1e-6,
+            "saved_usd": round(b["usd"] * ratio - p["usd"], 4),
+            "saved_kgco2": round(b["kgco2"] * ratio - p["kgco2"], 4) if signal.get("moer") else 0.0,
+            "signal_kind": signal.get("kind")}
+
+
 def impact(plan, baseline, signal, tariff) -> dict[str, float]:
-    """Savings of `plan` vs `baseline` (both {connector_id: [kW per slot]}). Stub: zero."""
-    return {"saved_usd": 0.0, "saved_kgco2": 0.0}
+    """Savings of `plan` vs `baseline` (both {connector_id: [kW per slot]}), keys exactly as LiveOut expects."""
+    d = impact_detail(plan, baseline, signal, tariff)
+    return {"saved_usd": d["saved_usd"], "saved_kgco2": d["saved_kgco2"]}
 
 
 def price(slack_hours: float) -> dict:
-    """Deadline sets the price. Three tiers by slack (dwell minus charge time)."""
+    """Deadline sets the price. Three tiers by slack (dwell minus charge time). Unknown slack => standard."""
+    if slack_hours is None or slack_hours != slack_hours:
+        return {"tier": "standard", "usd_per_kwh": 0.25}
     if slack_hours >= 4:
         return {"tier": "green", "usd_per_kwh": 0.18}
     if slack_hours >= 1:
