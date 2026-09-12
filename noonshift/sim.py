@@ -1,0 +1,130 @@
+"""Simulated day: a clock stepped one sim-minute at a time, 60 connectors, sessions replayed from data/sessions.json.
+
+The Sim does physics only. It never solves; api.py sets each connector's limit from the current plan.
+"""
+import json
+import os
+from datetime import datetime, timedelta
+
+SPEED = float(os.environ.get("SIM_SPEED", "480"))  # sim-seconds per real second; 480 = one day in 3 min
+SLOT = timedelta(minutes=5)
+START_HOUR = 6  # nothing happens before 06:00; skip it
+
+
+def load_sessions(path="data/sessions.json"):
+    out = []
+    for s in json.load(open(path)):
+        s = dict(s, kwh_delivered=0.0, boost=False, status="pending", ended_at=None)
+        for k in ("arrival", "departure", "user_stated_departure"):
+            s[k] = datetime.fromisoformat(s[k])
+        out.append(s)
+    return out
+
+
+class Connector:
+    """One charger. Draws min(limit, p_max * taper) while a session is charging."""
+
+    def __init__(self, id, p_max_kw=7.0):
+        self.id, self.p_max_kw = id, p_max_kw
+        self.session = None
+        self.limit_kw = p_max_kw  # fail-open: full power until a plan says otherwise
+        self.kw = 0.0
+
+    @property
+    def status(self):
+        return "idle" if not self.session else self.session["status"]
+
+    def plug_in(self, session):
+        self.session = session
+        session["connector_id"] = self.id
+        session["status"] = "charging"
+        self.limit_kw = self.p_max_kw
+
+    def set_limit(self, kw):
+        self.limit_kw = max(0.0, min(kw, self.p_max_kw))
+
+    def tick(self, minutes):
+        s = self.session
+        if not s or s["status"] != "charging":
+            self.kw = 0.0
+            return
+        frac = s["kwh_delivered"] / s["kwh_needed"]
+        taper = 1.0 if frac < 0.8 else max(0.1, (1 - frac) / 0.2)  # battery taper: linear from 80% to ~10% at full
+        self.kw = min(self.limit_kw, self.p_max_kw * taper)
+        s["kwh_delivered"] = min(s["kwh_needed"], s["kwh_delivered"] + self.kw * minutes / 60)
+        if s["kwh_delivered"] >= s["kwh_needed"] - 1e-6:
+            s["status"], self.kw = "done", 0.0
+
+    def unplug(self, now):
+        s, self.session, self.kw = self.session, None, 0.0
+        s["status"], s["ended_at"] = "ended", now
+        return s
+
+
+class Sim:
+    def __init__(self, sessions, site, connector_cls=Connector):
+        day = min(s["arrival"] for s in sessions).replace(hour=0, minute=0, second=0, microsecond=0)
+        self.now = day + timedelta(hours=START_HOUR)
+        self.day_end = day + timedelta(days=1)
+        self.pending = sorted(sessions, key=lambda s: s["arrival"])
+        self.connectors = {cid: connector_cls(cid, site["p_max_kw"]) for cid in site["connectors"]}
+        self.sessions = {s["id"]: s for s in sessions}
+
+    def free_connector(self, preferred=None):
+        c = self.connectors.get(preferred)
+        if c and not c.session:
+            return c
+        return next((c for c in self.connectors.values() if not c.session), None)
+
+    def arrive(self, session):
+        """Plug a session in now. Returns the connector, or None if the lot is full."""
+        c = self.free_connector(session.get("connector_id"))
+        if c:
+            self.sessions[session["id"]] = session
+            c.plug_in(session)
+        return c
+
+    def tick(self, minutes=1):
+        """Advance the clock. Returns [{"name": "plug_in"|"unplug", "session_id", "connector_id"}]."""
+        for c in self.connectors.values():
+            c.tick(minutes)
+        self.now += timedelta(minutes=minutes)
+        events = []
+        for c in self.connectors.values():
+            if c.session and c.session["departure"] <= self.now:
+                s = c.unplug(self.now)
+                events.append({"name": "unplug", "session_id": s["id"], "connector_id": c.id})
+        while self.pending and self.pending[0]["arrival"] <= self.now:
+            s = self.pending.pop(0)
+            c = self.arrive(s)
+            if c:
+                events.append({"name": "plug_in", "session_id": s["id"], "connector_id": c.id})
+        return events
+
+    def active(self):
+        return [c for c in self.connectors.values() if c.session]
+
+
+if __name__ == "__main__":  # self-check: python -m noonshift.sim
+    site = json.load(open("data/site.json"))
+    sim = Sim(load_sessions(), site)
+    plugged, peak = set(), 0.0
+    while sim.now < sim.day_end:
+        for e in sim.tick():
+            if e["name"] == "plug_in":
+                s = sim.sessions[e["session_id"]]
+                assert s["arrival"] <= sim.now < s["arrival"] + timedelta(minutes=2), (s["arrival"], sim.now)
+                plugged.add(s["id"])
+            else:
+                s = sim.sessions[e["session_id"]]
+                assert abs((s["departure"] - sim.now).total_seconds()) < 60
+        peak = max(peak, sum(c.kw for c in sim.connectors.values()))
+    ss = sim.sessions.values()
+    assert plugged == set(sim.sessions), "every session plugged in"
+    assert all(s["status"] == "ended" for s in ss), "every session unplugged"
+    assert all(s["kwh_delivered"] <= s["kwh_needed"] + 1e-6 for s in ss), "never overfill"
+    assert all(abs(s["kwh_delivered"] - s["kwh_needed"]) < 1e-3 for s in ss if s["id"] not in (7, 23)), "full power fills every long-dwell car"
+    assert 150 < peak <= 280, f"uncontrolled peak {peak:.0f} kW should exceed the 150 kW feed"
+    print(f"sim ok: 40 sessions replayed, uncontrolled peak {peak:.0f} kW, "
+          f"early leavers got {sim.sessions[7]['kwh_delivered']:.1f}/{sim.sessions[7]['kwh_needed']} and "
+          f"{sim.sessions[23]['kwh_delivered']:.1f}/{sim.sessions[23]['kwh_needed']} kWh")
