@@ -74,6 +74,30 @@ async def event(name, detail):
     await broadcast(EventMsg(sim_time=S["sim"].now, name=name, detail=detail))
 
 
+def session_impact(h, remaining=()):
+    """The receipt: metered kW since plug-in plus the plan still ahead, against the charge-now baseline frozen
+    at plug-in, both priced with the day's signal and tariff aligned to plug-in time. Re-solving every 5 min
+    re-derives the baseline from the current state, so comparing only the remaining plan would shrink the
+    receipt to zero by the time the driver unplugs."""
+    full = len(h["kw_min"]) // 5
+    metered = [sum(h["kw_min"][5 * k:5 * k + 5]) / 5 for k in range(full)]
+    series = metered + list(remaining)[:288 - full]
+    signal = {"moer": aligned(S["signal"]["moer"], h["start"]), "kind": S["signal"]["kind"]}
+    tariff = dict(S["tariff"], price_per_kwh=aligned(S["tariff"]["price_per_kwh"], h["start"]))
+    return scheduler.impact({"s": series}, {"s": h["baseline"]}, signal, tariff)
+
+
+def meter_history():
+    """Once a sim-minute: record each charging car's draw; finalise the receipt when a car is done or gone."""
+    sim = S["sim"]
+    for sid, h in S.setdefault("hist", {}).items():
+        s = sim.sessions[sid]
+        if s["status"] == "charging":
+            h["kw_min"].append(sim.connectors[s["connector_id"]].kw)
+        elif not h.get("final"):
+            S["impact"][sid], h["final"] = session_impact(h), True
+
+
 def apply_limits():
     sim = S["sim"]
     k = slot_of(sim.now) - slot_of(S["plan_at"]) if S["plan_at"] else -1
@@ -116,7 +140,9 @@ async def resolve(reason):
     S.update(plan=plan, plan_at=now, baseline=baseline, last_solve_at=now)
     for c in cars:
         cid = c["connector_id"]
-        S["impact"][sim.connectors[cid].session["id"]] = scheduler.impact({cid: plan[cid]}, {cid: baseline[cid]}, signal, tariff)
+        sid = sim.connectors[cid].session["id"]
+        h = S.setdefault("hist", {}).setdefault(sid, {"start": now, "baseline": baseline[cid], "kw_min": []})
+        S["impact"][sid] = session_impact(h, plan[cid])
     apply_limits()
     msg = plan_msg(reason)
     await broadcast(msg)
@@ -143,6 +169,7 @@ async def step():
     """One sim-minute: draw power, handle plug-ins/unplugs, re-solve on event or 5-min boundary, publish meters."""
     sim = S["sim"]
     events = sim.tick(1)
+    meter_history()
     for e in events:
         await event(e["name"], e)
         await db.save_session(sim.sessions[e["session_id"]])
@@ -153,7 +180,7 @@ async def step():
     await broadcast(meter_msg())
     await db.save_meters(sim.now, [(c.id, c.session["id"], c.kw, c.session["kwh_delivered"]) for c in sim.active()])
     if sim.now >= sim.day_end:  # play the day again
-        S.update(sim=new_sim(), plan={}, plan_at=None, baseline={}, impact={}, dr=[])
+        S.update(sim=new_sim(), plan={}, plan_at=None, baseline={}, impact={}, hist={}, dr=[])
         await event("day_reset", {"day_start": S["sim"].now})
 
 
@@ -202,7 +229,7 @@ def check_site(site_id):
 @contextlib.asynccontextmanager
 async def lifespan(app):
     S.update(site=json.load(open("data/site.json")), signal=json.load(open("data/signal.json")),
-             tariff=json.load(open("data/tariff.json")), plan={}, plan_at=None, baseline={}, impact={}, mode="live",
+             tariff=json.load(open("data/tariff.json")), plan={}, plan_at=None, baseline={}, impact={}, hist={}, mode="live",
              ladder={"live": True, "cached": True, "tariff": True, "deadline": True}, live_lost_at=None,
              last_solve_at=None, dr=[], clients=set(), next_id=1000)
     if os.environ.get("OCPP") == "1":

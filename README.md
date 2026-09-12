@@ -50,14 +50,22 @@ Fail-safe ladder: `live -> cached (<= 6 sim-hours) -> tariff -> deadline -> full
 
 ## Scheduler
 
-`noonshift/scheduler.py` holds stubs (`solve` = full power, `impact` = 0, `price` = three tiers). Neal's real file drops in with the same signatures. Data in `data/*.json` is generated placeholder data with the real files' schema; regenerate with `python -m noonshift.seed gen`.
+`noonshift/scheduler.py`: elastic LP over 40 connectors x 288 five-minute slots (scipy HiGHS, ~30-60 ms). `solve` = the
+five rules of proposal 4.4 plus fairness and a 6 A floor; `impact` = energy-matched receipt vs the charge-now baseline;
+`price` = three tiers by slack. Design notes, edge cases and status: `neal-plan.md`. Data in `data/*.json` is generated
+placeholder data with the real files' schema (`python -m noonshift.seed gen`); `scripts/fetch_data.py` downloads the
+real day (WattTime, ACN-Data, or the no-auth CAISO fallback).
 
 ## Checks
 
 ```
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+python -m pytest                   # 52 tests: scheduler, impact, perf, full-day replay with the four demo scenarios (~45 s)
+python scripts/prove.py            # slide 1: charge-immediately vs Noonshift on the day, exit 1 if the 15% CO2 gate fails
 python -m noonshift.sim            # replays the day at full power
 python -m noonshift.test_loop      # control loop + ladder, no DB needed
 python -m noonshift.ocpp_gateway   # OCPP round trip
 DATABASE_URL=postgresql://noonshift:noonshift@localhost/noonshift python -m noonshift.db   # schema
 ```
+
+`requirements.txt` pins `scipy==1.14.*`: 1.15.x's HiGHS bindings took 66 s per solve on Windows (`tests/test_perf.py` guards it).

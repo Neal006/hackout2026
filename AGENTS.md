@@ -1,58 +1,72 @@
 # AGENTS.md — Project Memory (auto-maintained)
-Last updated: 2026-09-12 | Sessions logged: 2
+Last updated: 2026-09-12 | Sessions logged: 3
 
 ## Identity
-Hackathon entry: "Noonshift" (working name) — a CPO-side, deadline-based EV charging scheduler that shifts flexible charging into low-marginal-carbon hours at daytime long-dwell sites (workplace/destination/depot). Team is in ideation; no code yet.
+Hackathon entry: "Noonshift" — a CPO-side, deadline-based EV charging scheduler that shifts flexible charging into low-marginal-carbon hours at daytime long-dwell sites (workplace/destination/depot). Four-person team, lanes in `team-plan.md`.
 
 ## Stack & Commands
-Planned (nothing installed yet):
-- Python 3.12 · FastAPI · scipy (HiGHS LP) · mobilityhouse/ocpp · gridstatus · acnportal · PostgreSQL · Redis
-- React (Vite) operator dashboard · PWA driver app · Docker Compose
-- No install/dev/test commands exist yet. Deliverable so far is a single HTML doc (open in a browser).
+- Python 3.12/3.13 · FastAPI · scipy 1.14 (HiGHS LP) · mobilityhouse/ocpp · asyncpg/Postgres (optional) · Docker Compose. Front-end (`web/`) is Nandini's lane, placeholder so far.
+- `python -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt`
+- `python -m pytest` (52 tests, ~45 s) · `python scripts/prove.py` (slide 1) · `python -m noonshift.test_loop` · `docker compose up -d --build`
+- Data: `python -m noonshift.seed gen` (placeholders) · `python scripts/fetch_data.py signal|caiso|sessions --day ...` (real).
 
 ## Current State & Focus
-- Ideation document complete: `ev-green-charging-ideation.html` (13 collapsible sections, 23 verified refs).
-- Published copy: https://claude.ai/code/artifact/74850316-de52-44a0-91a4-54c3d8d5d497
-- Narrative proposal (md, 13 mermaid diagrams, 5 case studies, market table): `noonshift-proposal.md` — same evidence base, plain-language, no em dashes.
-- Next: hour-0 feasibility — run the elastic LP on 40 ACN-Data sessions vs PG&E BEV tariff + WattTime CAISO_NORTH history; print bill & CO₂ delta vs charge-immediately.
+- Tirth's lane on main: api.py (7 endpoints, /ws, ladder, /demo/*), sim.py (1-min clock, taper), ocpp_gateway.py, db.py, seed.py, docker, hosting.
+- Neal's lane on branch `neal/scheduler-proof`: real `scheduler.py`, impact/price, receipt fix in api.py, 52 tests, prove.py, fetch_data.py. prove.py on seeded data: $ -19.8%, CO2 -37.5%, peak -9.1%, 0 fallbacks.
+- Next: fetch real WattTime MOER + ACN sessions (tokens), re-run prove.py, tune W_CARBON; front-ends; pitch.
 
 ## Architecture
-Signals (WattTime MOER, gridstatus CAISO, Electricity Maps, NESO) + tariff table + sessions (deadline, kWh) + site meters
-→ Scheduler (elastic LP, 5-min slots, re-solve every 5 min + on event) → per-connector kW profiles via OCPP SetChargingProfile
-→ Impact engine (metered kWh × MOER vs charge-now baseline) → Driver PWA (one question, plan, receipt) · Operator dashboard · Grid API (stub).
-Hard current limits live on the charger, outside the optimiser. Fail-open to full power if backend unreachable.
+Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (deadline, kWh) + site meters
+→ `scheduler.solve()` (elastic LP, 5-min slots; api re-solves every 5 sim-min + on event) → per-connector kW limits (direct or OCPP SetChargingProfile)
+→ `api.step()` per sim-minute: sim draws min(limit, taper), `meter_history()` records kW, receipts = metered vs baseline frozen at plug-in
+→ WebSocket frames (plan/meter/event) → driver PWA + ops dashboard. Ladder: live → cached → tariff-only → deadline-only → full power. Hardware limits stay on the charger.
 
 ## File Map
-- `ev-green-charging-ideation.html` — full ideation doc: problem, root cause, solution, evidence, novelty, incumbents, comparison, stack/architecture, edge cases, limitations, council pressure-test, research trail, references.
-- `noonshift-proposal.md` — 10-section narrative proposal (abstract → intro → problem → solution → why optimal/feasible → stack/architecture → 5 case studies → market table → limitations → refs). Mermaid diagrams validated.
-- `AGENTS.md` — this file.
+- `noonshift/scheduler.py` — `solve(cars, site, signal, tariff, now)`, `solve_lp()` (+info), `impact()`, `impact_detail()`, `price()`; module constants W_CARBON, ALPHA, FLOOR_EVERY, SPRINT_SLOTS, BUFFER_COST, M_SHORT, M_FLOOR, ASAP_EPS, E_MIN, MIN_KW.
+- `noonshift/api.py` — FastAPI app, state dict `S`, `resolve()`, `step()`, `session_impact()`, `meter_history()`, ladder `pick_mode()`, `/demo/*`.
+- `noonshift/sim.py` — `Sim`, `Connector` (taper from 80% SoC), `load_sessions()`.
+- `noonshift/models.py` — pydantic REST bodies + WS frames (contract with front-end).
+- `noonshift/ocpp_gateway.py`, `db.py`, `seed.py`, `test_loop.py` — Tirth's; unchanged by Neal's lane.
+- `scripts/prove.py` — two real-loop replays (charge-now vs Noonshift), slide-1 table, gate exit code.
+- `scripts/fetch_data.py` — WattTime / ACN-Data / CAISO fallback → `data/*.json`.
+- `tests/test_scheduler.py`, `test_impact.py`, `test_perf.py`, `test_day.py` (full day + demo scenarios), `tests/fixtures/baseline_1405.json`.
+- `neal-plan.md` — Neal's lane: status vs gates, LP deviations and why, edge-case→test matrix, open items.
+- `team-plan.md`, `noonshift-proposal.md`, `ev-green-charging-ideation.html` — plan and evidence base.
 
 ## Conventions
 - Every factual claim in docs must cite a reference that was actually opened; mark secondary/abstract-only sources.
-- Say "we found no product doing X", never "none exists".
-- Impact numbers are labelled estimates, never certificates.
-- Grid signal and session data must be from the same grid (CA sessions ↔ CAISO signals).
+- Say "we found no product doing X", never "none exists". Impact numbers are labelled estimates, never certificates.
+- Grid signal and session data must be from the same grid (CA sessions ↔ CAISO signals); `signal.kind` "average" must be labelled as such.
+- Scheduler contract is dict-based and frozen; add keyword-only extras or new functions, never change the three signatures.
+- Every regression found by the day replay gets a unit test that fails on the old code before the fix.
 
 ## Dependencies & Gotchas
-- WattTime Basic (free): all signals for CAISO_NORTH only; 2+ yrs history; 72 h forecast updated every 5 min.
-- Electricity Maps free tier: 1 zone, 50 req/h, NO forecast. NESO (GB) API: free, no auth, 96 h forecast, 14 regions.
-- PG&E BEV rate: super-off-peak 09–14, peak 16–21, subscription kW blocks (no demand charges).
-- EVs can't charge below 6 A (IEC 61851); some EVs don't resume after a pause → throttle to 6 A, never 0.
-- Martin/Powell/Rajagopal (Nat. Comms Dec 2025): broadcast MEF/AEF signals can raise emissions at scale; avoid plain MEF beyond ~500k EVs.
-- Nature.com blocks automated fetch → use PMC/OSTI/RePEc mirrors. MDPI Energies returned 403.
-- Mermaid validation: `mermaid@11` + `jsdom` in node, `mermaid.parse()` per block (script in job tmp). GitHub renders xychart-beta, quadrantChart, timeline, gantt with `dateFormat HH:mm`.
-- Open limitation: scheduler assumes 1 charger per car for full dwell; more cars than chargers → deadline becomes 'move-by' time (proposal §9.5).
+- **scipy must stay 1.14.x**: 1.15.2's HiGHS bindings took 66 s for any ~11k-column LP on Windows (HiGHS itself 0.01 s); 1.14.1 = 38 ms. `tests/test_perf.py` trips if the pin is lifted.
+- HiGHS returns "Unknown" (status 4) when the objective is only 1e-7 tie-breaks (all-ASAP baseline of nearly-full cars). Keep ASAP_EPS = 1e-3; `solve()` falls open to full power and logs ERROR if it ever happens.
+- Progress floor must be anchored to arrival, not `now`: a rolling re-solve otherwise defers it forever under a falling MOER.
+- Peak-based block overage in the LP means once one slot exceeds the block, exceeding everywhere is free; the post-step trim caps rounding at the block.
+- WattTime Basic (free): CAISO_NORTH only; 2+ yrs history; 72 h forecast. WattTime MOER is lbs/MWh → ×0.4536 = g/kWh. Electricity Maps free: 1 zone, 50 req/h, no forecast. NESO (GB): free, no auth.
+- CAISO fuel mix CSV: `https://www.caiso.com/outlook/history/YYYYMMDD/fuelsource.csv`, no auth, 5-min local time; 2026-04-14 midday average is ~14 g/kWh.
+- Windows Python has no tz database: `tzdata` (in requirements-dev) for `fetch_data.py`.
+- PG&E BEV rate: super-off-peak 09–14, peak 16–21, subscription kW blocks; overage in `impact()` is block_price × multiplier / 30 per day.
+- EVs can't charge below 6 A (IEC 61851); MIN_KW = 1.4; never pause a car, round up.
+- Martin/Powell/Rajagopal (Nat. Comms Dec 2025): broadcast MEF/AEF signals can raise emissions at scale; no broadcast here.
+- Nature.com blocks automated fetch → PMC/OSTI/RePEc mirrors. MDPI Energies 403. Mermaid: validate with `mermaid@11` + jsdom.
+- Open limitation: 1 charger per car for the whole dwell; cars > chargers → deadline becomes 'move-by' time (proposal §9.5).
 
 ## Decisions Log
-- 2026-09-11 — Wedge = daytime workplace/destination sites, payer = site owner — home-overnight is where incumbents already are; solar surplus + idle dwell are daytime.
-- 2026-09-11 — One plug-in question + one Boost toggle; no pricing lanes — lanes contradicted deferral-aversion evidence and manufactured a coordination problem.
-- 2026-09-11 — Elastic LP with progress-floor constraint — solver must never fail; fairness and early-unplug handled by one constraint.
-- 2026-09-11 — Anti-herding = architecture (no broadcast) + multi-site committed-load penalty; full Cascading MEF is roadmap.
-- 2026-09-11 — Demo grid = California (WattTime CAISO_NORTH + gridstatus), matching ACN-Data sessions.
+- 2026-09-11 — Wedge = daytime workplace/destination sites, payer = site owner.
+- 2026-09-11 — One plug-in question + one Boost toggle; no pricing lanes.
+- 2026-09-11 — Elastic LP with progress floor; anti-herding = no broadcast; demo grid = California.
+- 2026-09-12 — Baseline = same `solve()` with every departure = now (charge-now FCFS under the feed, no overage term); prove.py replays the day under both policies rather than overlaying frozen per-car baselines (those ignored the feed).
+- 2026-09-12 — Receipt = metered history vs baseline frozen at plug-in, energy-matched; no signal ⇒ no CO2 claim.
+- 2026-09-12 — Fairness = min-max shortfall fraction; floor anchored to arrival with its own slack; sprint buffer = surcharge; 30-min floor checkpoints.
 
 ## Changelog
-2026-09-12 | Narrative md proposal with diagrams + case studies | noonshift-proposal.md, AGENTS.md | Case studies = real deployments (ACN, Rivian, Powell, ev.energy/Martin, Ava/PG&E), not invented scenarios; cars>chargers added as limitation
-2026-09-11 | Ideation doc + council pressure test | ev-green-charging-ideation.html, AGENTS.md | Site-owner-paid deadline scheduler for daytime lots; lanes dropped; LP made elastic
+2026-09-12 | Neal's lane: scheduler, impact, prove, fetch, tests | noonshift/scheduler.py, api.py, scripts/, tests/, neal-plan.md, README | 4 defects found by the day replay fixed with failing-first tests; scipy pinned 1.14
+2026-09-12 | Tirth's lane: api, sim, OCPP, docker, hosting | noonshift/*, data/, docker-compose.yml, render.yaml | Stubs with frozen signatures; ladder shapes inputs not calls
+2026-09-12 | Narrative md proposal with diagrams + case studies | noonshift-proposal.md | Real deployments as case studies
+2026-09-11 | Ideation doc + council pressure test | ev-green-charging-ideation.html | Site-owner-paid deadline scheduler; lanes dropped; LP made elastic
 
 ## Archived Summary
 (none yet)

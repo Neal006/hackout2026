@@ -1,0 +1,3 @@
+-r requirements.txt
+pytest==8.*
+tzdata; sys_platform == "win32"   # scripts/fetch_data.py needs America/Los_Angeles
