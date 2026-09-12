@@ -7,29 +7,39 @@ Contract: the three signatures in the stub Tirth froze are unchanged; `api.py` c
 
 | Hour | Gate | Status |
 |---|---|---|
-| 6 | `prove.py` prints >= 15% saving; slide 1 exists | Done on the **real WattTime CAISO_NORTH MOER for 2026-04-14** (seeded sessions): **$ -20.1%, CO2 -100%, peak -9.1%**, 0 fallbacks. Other days below. Real ACN sessions still to fetch (token). |
+| 6 | `prove.py` prints >= 15% saving; slide 1 exists | Done on **real data both sides**: WattTime CAISO_NORTH MOER for 2026-04-14 and 36 ACN Caltech sessions (2019-04-09, re-dated): **CO2 -69.3%, $ -3.3%, peak -1.0%**, 0 fallbacks, gate PASS. Other days below. |
 | 10 | `solve()` / `impact()` / `price()` frozen | Done, signatures identical to the stub. `solve_lp()` and `impact_detail()` added for prove.py, not for the API. |
 | 16-30 | impact engine, price tiers | Done. Receipt path in `api.py` fixed so the receipt is metered-vs-baseline, not the shrinking remainder. |
-| 30-48 | support demo scenarios, tune weights | Four demo endpoints exercised by `tests/test_day.py`. `W_CARBON` decided (below). Remaining: ACN sessions, re-read the printed numbers with Srishti. |
+| 30-48 | support demo scenarios, tune weights | Four demo endpoints exercised by `tests/test_day.py`. `W_CARBON` decided (below). Remaining: re-read the printed numbers with Srishti. |
 
-## Real signal: three days, same 40 seeded sessions (`prove.py`)
+## Real data: what `data/` holds
+
+- `signal.json`: WattTime CAISO_NORTH marginal MOER, 2026-04-14 (289 points, 0 gaps). 0 g/kWh 08:00-18:00.
+- `sessions.json`: 36 ACN-Data Caltech sessions from Tuesday 2019-04-09 (ACN covers 2018-04 to 2021-09, so no 2026
+  day exists), re-dated onto 2026-04-14. `kwh_needed` = energy the car actually took (drivers requested a median
+  1.47x that); `user_stated_departure` = what the driver typed (5 of 36 left before it, one 2.6 h early).
+  **The slide must say "2019 sessions, 2026 grid signal".** Fetch commands in `scripts/fetch_data.py`.
+
+## Three days, real signal x real sessions (`prove.py`)
 
 | Day | MOER shape | $ | CO2 | peak | short of full |
 |---|---|---|---|---|---|
-| 2026-04-14 (demo) | 0 g/kWh 08:00-18:00, ~440 overnight | -20.1% | **-100%** (14.7 -> 0.0 kg) | -9.1% | 0 |
-| 2026-07-14 | 0 g/kWh 12:00-17:00, 180-480 elsewhere | -20.5% | -92.8% (124 -> 9 kg) | -9.1% | 2 early leavers (by design) |
-| 2026-01-20 | flat 413-494 all day (gas at the margin) | -20.0% | -3.8% (151 -> 145 kg) | -9.1% | 2 early leavers |
+| 2026-04-14 (demo) | 0 g/kWh 08:00-18:00, ~440 overnight | -3.3% | **-69.3%** (23.0 -> 7.1 kg) | -1.0% | 3, same 3 under charge-now (dwell-limited) |
+| 2026-07-14 | 0 g/kWh 12:00-17:00, 180-480 elsewhere | -3.2% | -64.5% (104 -> 37 kg) | -1.9% | same 3 |
+| 2026-01-20 | flat 413-494 all day (gas at the margin) | -2.2% | -1.8% (177 -> 174 kg) | -1.6% | those 3 + 2 early leavers |
 
-Say on the slide: the $ and peak savings come from the tariff and the block and hold every day; the CO2 saving is
-the grid's to give, huge on solar days and near zero when gas sets the margin all day. Quote the range, not April.
-The winter day also exposed a modelling gap (battery taper vs a flat signal) that is now fixed and tested.
+Why $ and peak are small on the real site: these 36 cars arrive 06:30-15:00, most of their energy already lands
+inside PG&E's 09-14 super-off-peak, and charge-now peaks at 101 kW on a 100 kW block, so the tariff already does
+the money work. Noonshift's added value on this site is carbon, and it never costs more. The seeded placeholder
+(40 cars arriving 07:30-09:30) showed $ -20% / peak -9% because its demand was bunched; do not quote those.
+The CO2 saving is the grid's to give: ~65-70% on solar days, ~0 when gas sets the margin all day. Quote the range.
 
 ## `W_CARBON` decision: 0.05 $/kg, kept
 
-Sweep on the real April MOER (`prove.py --w-carbon`): W=0 (tariff-only) **raises** emissions 16.7% vs charge-now,
-because it runs 100 kW flat through a 172 g/kWh blip at 10:00-11:00 that the tariff cannot see; W=0.02 and every
-value up to 0.5 give the full -100% with an identical $ saving (20.1%) and identical peak. The knee is at the first
-step, so the weight stays at the $50/t anchor. Re-check with `--w-carbon` once ACN sessions are in.
+Sweep on the real April MOER with the real sessions (`prove.py --w-carbon`): W=0 (tariff-only) gives CO2 -1.2%,
+i.e. the tariff alone is carbon-blind (with the seeded sessions it even raised emissions 16.7% by running 100 kW
+through a 172 g/kWh blip at 10:00-11:00); W=0.02 and every value up to 0.5 give -69.3% with an identical $ saving
+(3.3%) and identical peak. The knee is at the first step, so the weight stays at the $50/t anchor.
 
 ## Run it
 
@@ -93,14 +103,15 @@ python scripts/fetch_data.py caiso --day 2026-04-14  # no-auth fallback, kind=av
 
 ## What is still open for Neal
 
-1. **ACN sessions.** WattTime is done (account `neal_noonshift`, credentials in `~/noonshift-credentials.json`,
-   verified). ACN-Data needs a registration with a real last name and affiliation; then
-   `python scripts/fetch_data.py sessions --day 2026-04-14 --n 40` (or a spring 2019 weekday re-dated, and say so),
-   re-run `prove.py` and the `--w-carbon` sweep.
+1. **Accounts.** WattTime `neal_noonshift` and ACN-Data `neal_noonshift` (token shown after portal login) are both
+   registered; credentials in `~/noonshift-credentials.json`, outside the repo.
 2. **Average vs marginal.** If WattTime stalls, the CAISO fallback is average intensity; `signal.kind` is
    "average" and prove.py says so. Slide 1 must not call it marginal.
-3. **Early leavers get 75-90% under Noonshift vs 100% under charge-now** on the seeded days. That is the design
-   trade-off the progress floor bounds (>= 50% pro-rata). Put it on the hard-questions slide, not in a footnote.
+3. **Early leavers** (5 of the 36 real drivers left before the time they typed) get the progress-floor guarantee
+   (>= 50% pro-rata), not a full charge, on flat-signal days. Put it on the hard-questions slide, not in a footnote.
+4. **Site sizing.** With the real Caltech day the 150 kW feed and 100 kW block are never really stressed
+   (peak 101 kW); the oversubscribe demo is what shows the elastic behaviour. If a bigger $/peak story is wanted,
+   it needs a site with bunched arrivals or a smaller block, and the slide must say which.
 
 ## Notes for the others
 

@@ -2,7 +2,7 @@
 
     python scripts/fetch_data.py signal   --day 2026-04-14          # WattTime CAISO_NORTH MOER (needs WATTTIME_USER/PASSWORD)
     python scripts/fetch_data.py caiso    --day 2026-04-14          # fallback: CAISO fuel mix -> AVERAGE intensity, no auth
-    python scripts/fetch_data.py sessions --day 2019-04-16 --n 40   # ACN-Data Caltech sessions (needs ACN_TOKEN), re-dated to --site-day
+    python scripts/fetch_data.py sessions --day 2019-04-09 --n 40   # ACN-Data Caltech sessions (needs ACN_TOKEN; data spans 2018-04..2021-09), re-dated to --site-day
 
 Every writer prints what it wrote and how many gaps it filled. Nothing here is imported by the app.
 """
@@ -116,13 +116,20 @@ def sessions(day, n, site_day):
         arr = parsedate_to_datetime(s["connectionTime"]).astimezone(PT).replace(tzinfo=None)
         dep = parsedate_to_datetime(s["disconnectTime"]).astimezone(PT).replace(tzinfo=None)
         ui = (s.get("userInputs") or [{}])[0]
+        # kwh_needed is what the car actually took: on 2019-04-09 drivers requested a median 1.47x what was delivered
+        # (one asked 20 kWh and took 1.2), so the request would send the sim chasing energy the battery never accepts.
+        # user_stated_departure is what the driver typed; it may be before the real departure (early leavers) or after.
+        kwh = float(s["kWhDelivered"])
         stated = parsedate_to_datetime(ui["requestedDeparture"]).astimezone(PT).replace(tzinfo=None) if ui.get("requestedDeparture") else dep
-        kwh = float(ui.get("kWhRequested") or s["kWhDelivered"])
+        if stated < arr + timedelta(minutes=30):
+            stated = dep
         if dep - arr < timedelta(hours=2) or kwh < 1:
             continue
         shift = datetime.combine(site_day, datetime.min.time()) - datetime.combine(arr.date(), datetime.min.time())
         out.append({"arrival": (arr + shift).replace(second=0, microsecond=0), "departure": (dep + shift).replace(second=0, microsecond=0),
-                    "user_stated_departure": (max(stated, dep) + shift).replace(second=0, microsecond=0), "kwh_needed": round(kwh, 1)})
+                    "user_stated_departure": (stated + shift).replace(second=0, microsecond=0), "kwh_needed": round(kwh, 1),
+                    "kwh_requested": round(float(ui["kWhRequested"]), 1) if ui.get("kWhRequested") else None,
+                    "acn_session": s.get("sessionID") or s.get("_id")})
     out.sort(key=lambda s: s["arrival"])
     out = out[:n]
     for i, s in enumerate(out, 1):
