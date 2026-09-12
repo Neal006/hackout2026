@@ -45,6 +45,9 @@ M_FLOOR = 1.0       # $/kWh for missing a progress-floor checkpoint: > any slot 
 EPS = 1e-7          # earliest-first tie-break per slot, << any real cost difference
 ASAP_EPS = 1e-3     # earliest-first cost for ASAP cars, which have no other cost: 1e-7 alone left HiGHS "Unknown"
 E_MIN = 0.05        # kWh; a car this close to full just finishes at MIN_KW in the first slot, no LP juggling
+TAPER_SOC = 0.8     # batteries taper above this state of charge; the sim goes linearly to TAPER_MIN at full
+TAPER_MIN = 0.1     # fraction of p_max at 100%
+TAPER_AVG = 0.3     # mean power fraction over the last 20%: integrating the linear taper gives ~0.66*need/p_max hours
 DAYS_PER_MONTH = 30 # tariff block overage is billed monthly; one day carries 1/30 of it
 
 
@@ -102,6 +105,9 @@ def solve_lp(cars, site, signal, tariff, now):
         need, done = float(car["kwh_needed"]), float(car.get("kwh_delivered", 0.0))
         e_rem = max(0.0, need - done)
         p_max = max(0.0, float(car["p_max_kw"]))
+        soc = done / need if need > 0 else 1.0
+        if soc >= TAPER_SOC:  # already tapering: the car cannot draw p_max any more, and it only gets slower
+            p_max *= max(TAPER_MIN, (1 - soc) / (1 - TAPER_SOC))
         d = _slots_until(car["departure"], now)
         asap = d == 0 or bool(car.get("boost"))
         if asap:
@@ -120,6 +126,13 @@ def solve_lp(cars, site, signal, tariff, now):
         e_rems.append(e_rem)
         row([(base + t, -SLOT_H) for t in range(d)] + [(S(i), -1.0)], -e_rem)          # rule 1 (elastic)
         row([(base + t, SLOT_H) for t in range(d)], e_rem)                              # cap
+        e_fast = max(0.0, TAPER_SOC * need - done)                                      # energy below the taper knee
+        if not asap and e_rem > e_fast > 0:
+            # the slow tail (above the knee) draws ~TAPER_AVG * p_max: the fast part must be done early enough to
+            # leave it time, or the tail spills past the deadline (winter replay: 22 cars 0.2 kWh short)
+            tail = math.ceil((e_rem - e_fast) / (TAPER_AVG * p_max) / SLOT_H)
+            if 0 < tail < end:  # elastic through the floor slack, never through the total shortfall
+                row([(base + t, -SLOT_H) for t in range(end - tail)] + [(F(i), -1.0)], -e_fast)
         row([(S(i), 1.0), (Z, -e_rem)], 0.0)                                            # s[i] / e_rem[i] <= z
         if not asap:
             # rule 2 (elastic), anchored to arrival: checkpoints every FLOOR_EVERY slots since plug-in, target
