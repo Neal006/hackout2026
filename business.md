@@ -37,7 +37,7 @@ Every $ figure below that is not from `prove.py` is marked **[est]** and should 
 | # | Break point | Where | Business consequence |
 |---|---|---|---|
 | 1 | Boost tier ($0.40) > peak tariff ($0.36) > standard ($0.25). Boost is a **surcharge**, not "today's price" | `scheduler.price()` | Contradicts the core fairness promise. First driver who compares to the old charger walks. |
-| 2 | Discount pool is unfunded. Site saves 0.6 ¢/kWh; tiers spread 7 ¢/kWh | `price()` vs `prove.py` | Every Green session **loses the site 6 ¢/kWh** at a Caltech-like site. |
+| 2 | Discount pool is unfunded. Site saves 0.6 ¢/kWh; tiers spread 7 ¢/kWh | `price()` vs `prove.py` | Every Green session **loses the site 6 ¢/kWh** at a Caltech-like site. Fix: shared-savings formula, §7b. |
 | 3 | `p_max_kw` is per connector (7 kW), not per car. PHEVs and older EVs have 3.3 kW onboard chargers | `sim.py`, `sessions.json` | Scheduler plans 7 kW for a car that can take 3.3 → promised energy not delivered → broken deadline → the one thing we swore never happens. ~30 % of a commercial lot [est]. |
 | 4 | `kwh_needed` = historical `kWhDelivered`. In production nobody knows it at plug-in (OCPP 1.6J AC has no SoC) | `fetch_data.py`, `api.py` | Receipt over- or under-claims. Flexibility < the 85 % claimed. |
 | 5 | Ladder fallback → **all deferred cars go to full power at once** | `api.py pick_mode()` | Deferred load is a liability. One backend outage at 14:00 can create a 2× demand-charge overage the dumb charger would never have caused. |
@@ -175,6 +175,72 @@ Let **R** = what the driver pays per kWh today at this site (often $0 at workpla
 - Battery health note: "charged at a gentle rate."
 
 **What NOT to do:** never show "you saved $0.06." Never make Boost cost more than R. Never price carbon to the driver — they didn't emit it, the grid did.
+
+### 7b. The shared-savings formula (replaces fixed tiers)
+
+One measured number per session — what the schedule actually saved — split three ways. The site can't lose, the driver can't lose, Noonshift is paid on results.
+
+**Variables (all from the app)**
+
+| Symbol | Meaning | Source |
+|---|---|---|
+| `R` | what the driver pays per kWh today | site setting |
+| `E_i` | kWh delivered to car i | `meter_history()` |
+| `c_t` | site's cost per kWh in slot t | `tariff.json` |
+| `E_t^base`, `E_t^ns` | kWh in slot t under charge-now vs Noonshift | the two replays (`impact_detail()`) |
+| `ΔD` | monthly demand charge avoided = `block_price × multiplier × (peak_base − peak_ns)` | `impact()` |
+| `G` | utility / DR payments received for the shifted load | `/openadr/events`, program invoices |
+| `α` | driver share of savings (0–0.5) | site knob |
+| `β` | Noonshift share of savings (e.g. 0.2) | contract; `α + β < 1` |
+
+**Step 1 — measured saving per session**
+
+```
+S_i = Σ_t (E_t^base − E_t^ns) × c_t          energy arbitrage (already in impact())
+    + ΔD × (E_i^shifted / E_month^shifted)     that car's slice of the demand-charge saving
+    + G  × (E_i^shifted / E_month^shifted)     that car's slice of program payments
+S_i = max(S_i, 0)                              a bad forecast never creates a negative discount
+```
+
+**Step 2 — the driver's price**
+
+```
+discount_i = α × S_i / E_i       ($/kWh)
+price_i    = R − discount_i      (no slack / Boost → S_i = 0 → price = R)
+Emergency  = R, no premium, 1 per month
+```
+
+Show the *estimated* discount at plug-in (the LP already knows the planned cost), settle the *actual* one on the receipt. A driver who leaves early shifted less, so gets less — no gaming, no penalty.
+
+**Step 3 — profit**
+
+```
+π_today = R × E_i − cost_base_i                 what the site makes now
+π_site  = π_today + (1 − α − β) × S_i           always ≥ π_today, because S_i ≥ 0
+π_noon  = β × S_i
+driver  = α × S_i
+```
+
+**Plugged in (379 kWh/day)**
+
+| Site | S/day | α | β | Driver gets | Noonshift | Site extra profit | Green price if R = $0.25 |
+|---|---|---|---|---|---|---|---|
+| Caltech day (measured) | $2.20 | 0.5 | 0.2 | $1.10 (0.3 ¢/kWh) | $0.44 | **+$0.66** | $0.247 |
+| Evening arrivals, 60 % moved 0.36 → 0.16 [est] | $45 | 0.4 | 0.2 | $18 (4.8 ¢/kWh) | $9 | **+$18/day ≈ $4.5k/yr** | $0.20 |
+| Power-limited, 100 kW overage avoided [est] | $83 + energy | 0.4 | 0.2 | $33 (8.7 ¢/kWh) | $17 | **+$33/day ≈ $8k/yr** | $0.16 |
+
+Same formula, three sites. At Caltech everyone gets pennies but nobody loses; at the sites that matter, the $0.18 green price we hardcoded comes out of the math instead of being a promise.
+
+**Why this beats fixed tiers**
+- Site can't lose: profit = today's profit + a non-negative number.
+- Driver can't lose: worst case pays R.
+- Noonshift is paid on results — the only pitch a facilities manager believes.
+- Self-calibrates per site and season: a January day yields ~0 discount automatically instead of the site eating 7 ¢/kWh.
+- No lying incentive: the discount is on kWh actually shifted, not on the deadline typed.
+
+**Does the company profit every session? Yes.** Every session, the site earns what it earns today plus a share of whatever the schedule actually saved — and that saving can never be negative, because if nothing was saved the driver simply pays today's price and gets no discount. The driver's discount and Noonshift's fee both come out of that same saving, and the site keeps the rest. The catch is honesty about size: on a normal sunny day at a Caltech-like site, "more" is a few cents; at a site short on power or with evening arrivals, it's real money.
+
+**Code change:** `price()` returns fixed `{green 0.18, standard 0.25, boost 0.40}`. Replace with `price(R, S_i, E_i, alpha) → R − alpha × S_i / E_i`, keep the tier *label* (boost / flex / green) for the UI from slack. `S_i` is one subtraction on the two cost numbers `impact_detail()` already computes.
 
 ---
 
