@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: noonshift
+      POSTGRES_PASSWORD: noonshift
+      POSTGRES_DB: noonshift
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noonshift"]
+      interval: 2s
+      retries: 15
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://noonshift:noonshift@postgres/noonshift
+      SIM_SPEED: ${SIM_SPEED:-480}   # sim-seconds per real second; 480 = one day in 3 min
+      OCPP: ${OCPP:-0}
+    ports: ["8000:8000"]
+    volumes:
+      - ./noonshift:/app/noonshift
+      - ./data:/app/data
+      - ./docs:/app/docs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn noonshift.api:app --host 0.0.0.0 --port 8000 --reload
+
+  web:
+    image: nginx:alpine
+    ports: ["3000:80"]
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    depends_on: [api]
