@@ -1,6 +1,6 @@
 fastapi==0.115.*
 uvicorn[standard]==0.30.*
-asyncpg==0.29.*
+asyncpg==0.30.*
 pydantic==2.*
 scipy==1.14.*
 ocpp==2.0.*

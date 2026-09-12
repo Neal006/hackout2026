@@ -1,0 +1,322 @@
+[
+ {
+  "id": 1,
+  "connector_id": "c01",
+  "arrival": "2026-04-14T08:11:00",
+  "departure": "2026-04-14T16:19:00",
+  "user_stated_departure": "2026-04-14T16:31:00",
+  "kwh_needed": 8.6
+ },
+ {
+  "id": 2,
+  "connector_id": "c02",
+  "arrival": "2026-04-14T07:39:00",
+  "departure": "2026-04-14T17:45:00",
+  "user_stated_departure": "2026-04-14T18:02:00",
+  "kwh_needed": 6.4
+ },
+ {
+  "id": 3,
+  "connector_id": "c03",
+  "arrival": "2026-04-14T08:44:00",
+  "departure": "2026-04-14T16:07:00",
+  "user_stated_departure": "2026-04-14T16:36:00",
+  "kwh_needed": 8.0
+ },
+ {
+  "id": 4,
+  "connector_id": "c04",
+  "arrival": "2026-04-14T07:34:00",
+  "departure": "2026-04-14T16:11:00",
+  "user_stated_departure": "2026-04-14T16:24:00",
+  "kwh_needed": 7.7
+ },
+ {
+  "id": 5,
+  "connector_id": "c05",
+  "arrival": "2026-04-14T08:00:00",
+  "departure": "2026-04-14T16:11:00",
+  "user_stated_departure": "2026-04-14T16:28:00",
+  "kwh_needed": 7.7
+ },
+ {
+  "id": 6,
+  "connector_id": "c06",
+  "arrival": "2026-04-14T09:15:00",
+  "departure": "2026-04-14T17:12:00",
+  "user_stated_departure": "2026-04-14T17:15:00",
+  "kwh_needed": 9.8
+ },
+ {
+  "id": 7,
+  "connector_id": "c07",
+  "arrival": "2026-04-14T08:50:00",
+  "departure": "2026-04-14T13:30:00",
+  "user_stated_departure": "2026-04-14T17:38:00",
+  "kwh_needed": 6.2
+ },
+ {
+  "id": 8,
+  "connector_id": "c08",
+  "arrival": "2026-04-14T08:44:00",
+  "departure": "2026-04-14T16:50:00",
+  "user_stated_departure": "2026-04-14T16:51:00",
+  "kwh_needed": 9.9
+ },
+ {
+  "id": 9,
+  "connector_id": "c09",
+  "arrival": "2026-04-14T07:35:00",
+  "departure": "2026-04-14T17:11:00",
+  "user_stated_departure": "2026-04-14T17:38:00",
+  "kwh_needed": 6.5
+ },
+ {
+  "id": 10,
+  "connector_id": "c10",
+  "arrival": "2026-04-14T08:23:00",
+  "departure": "2026-04-14T16:18:00",
+  "user_stated_departure": "2026-04-14T16:35:00",
+  "kwh_needed": 6.5
+ },
+ {
+  "id": 11,
+  "connector_id": "c11",
+  "arrival": "2026-04-14T08:09:00",
+  "departure": "2026-04-14T17:11:00",
+  "user_stated_departure": "2026-04-14T17:37:00",
+  "kwh_needed": 8.7
+ },
+ {
+  "id": 12,
+  "connector_id": "c12",
+  "arrival": "2026-04-14T07:43:00",
+  "departure": "2026-04-14T17:14:00",
+  "user_stated_departure": "2026-04-14T17:32:00",
+  "kwh_needed": 8.6
+ },
+ {
+  "id": 13,
+  "connector_id": "c13",
+  "arrival": "2026-04-14T08:17:00",
+  "departure": "2026-04-14T16:12:00",
+  "user_stated_departure": "2026-04-14T16:29:00",
+  "kwh_needed": 8.8
+ },
+ {
+  "id": 14,
+  "connector_id": "c14",
+  "arrival": "2026-04-14T08:42:00",
+  "departure": "2026-04-14T16:07:00",
+  "user_stated_departure": "2026-04-14T16:26:00",
+  "kwh_needed": 6.8
+ },
+ {
+  "id": 15,
+  "connector_id": "c15",
+  "arrival": "2026-04-14T08:57:00",
+  "departure": "2026-04-14T17:08:00",
+  "user_stated_departure": "2026-04-14T17:21:00",
+  "kwh_needed": 9.1
+ },
+ {
+  "id": 16,
+  "connector_id": "c16",
+  "arrival": "2026-04-14T08:29:00",
+  "departure": "2026-04-14T17:14:00",
+  "user_stated_departure": "2026-04-14T17:43:00",
+  "kwh_needed": 7.8
+ },
+ {
+  "id": 17,
+  "connector_id": "c17",
+  "arrival": "2026-04-14T08:08:00",
+  "departure": "2026-04-14T16:31:00",
+  "user_stated_departure": "2026-04-14T16:56:00",
+  "kwh_needed": 6.7
+ },
+ {
+  "id": 18,
+  "connector_id": "c18",
+  "arrival": "2026-04-14T09:09:00",
+  "departure": "2026-04-14T16:31:00",
+  "user_stated_departure": "2026-04-14T16:33:00",
+  "kwh_needed": 8.3
+ },
+ {
+  "id": 19,
+  "connector_id": "c19",
+  "arrival": "2026-04-14T08:37:00",
+  "departure": "2026-04-14T17:03:00",
+  "user_stated_departure": "2026-04-14T17:31:00",
+  "kwh_needed": 7.4
+ },
+ {
+  "id": 20,
+  "connector_id": "c20",
+  "arrival": "2026-04-14T08:27:00",
+  "departure": "2026-04-14T16:36:00",
+  "user_stated_departure": "2026-04-14T16:55:00",
+  "kwh_needed": 9.9
+ },
+ {
+  "id": 21,
+  "connector_id": "c21",
+  "arrival": "2026-04-14T07:45:00",
+  "departure": "2026-04-14T17:05:00",
+  "user_stated_departure": "2026-04-14T17:18:00",
+  "kwh_needed": 6.7
+ },
+ {
+  "id": 22,
+  "connector_id": "c22",
+  "arrival": "2026-04-14T08:13:00",
+  "departure": "2026-04-14T16:19:00",
+  "user_stated_departure": "2026-04-14T16:48:00",
+  "kwh_needed": 8.0
+ },
+ {
+  "id": 23,
+  "connector_id": "c23",
+  "arrival": "2026-04-14T07:35:00",
+  "departure": "2026-04-14T13:24:00",
+  "user_stated_departure": "2026-04-14T17:27:00",
+  "kwh_needed": 8.2
+ },
+ {
+  "id": 24,
+  "connector_id": "c24",
+  "arrival": "2026-04-14T09:11:00",
+  "departure": "2026-04-14T17:52:00",
+  "user_stated_departure": "2026-04-14T18:18:00",
+  "kwh_needed": 7.3
+ },
+ {
+  "id": 25,
+  "connector_id": "c25",
+  "arrival": "2026-04-14T08:58:00",
+  "departure": "2026-04-14T16:44:00",
+  "user_stated_departure": "2026-04-14T17:03:00",
+  "kwh_needed": 8.0
+ },
+ {
+  "id": 26,
+  "connector_id": "c26",
+  "arrival": "2026-04-14T09:12:00",
+  "departure": "2026-04-14T16:58:00",
+  "user_stated_departure": "2026-04-14T17:00:00",
+  "kwh_needed": 9.4
+ },
+ {
+  "id": 27,
+  "connector_id": "c27",
+  "arrival": "2026-04-14T09:30:00",
+  "departure": "2026-04-14T16:34:00",
+  "user_stated_departure": "2026-04-14T16:49:00",
+  "kwh_needed": 8.8
+ },
+ {
+  "id": 28,
+  "connector_id": "c28",
+  "arrival": "2026-04-14T07:38:00",
+  "departure": "2026-04-14T16:07:00",
+  "user_stated_departure": "2026-04-14T16:30:00",
+  "kwh_needed": 8.8
+ },
+ {
+  "id": 29,
+  "connector_id": "c29",
+  "arrival": "2026-04-14T08:52:00",
+  "departure": "2026-04-14T17:13:00",
+  "user_stated_departure": "2026-04-14T17:34:00",
+  "kwh_needed": 9.3
+ },
+ {
+  "id": 30,
+  "connector_id": "c30",
+  "arrival": "2026-04-14T08:06:00",
+  "departure": "2026-04-14T17:31:00",
+  "user_stated_departure": "2026-04-14T17:43:00",
+  "kwh_needed": 9.5
+ },
+ {
+  "id": 31,
+  "connector_id": "c31",
+  "arrival": "2026-04-14T08:14:00",
+  "departure": "2026-04-14T16:02:00",
+  "user_stated_departure": "2026-04-14T16:32:00",
+  "kwh_needed": 7.8
+ },
+ {
+  "id": 32,
+  "connector_id": "c32",
+  "arrival": "2026-04-14T07:51:00",
+  "departure": "2026-04-14T17:18:00",
+  "user_stated_departure": "2026-04-14T17:21:00",
+  "kwh_needed": 8.0
+ },
+ {
+  "id": 33,
+  "connector_id": "c33",
+  "arrival": "2026-04-14T07:57:00",
+  "departure": "2026-04-14T17:38:00",
+  "user_stated_departure": "2026-04-14T17:47:00",
+  "kwh_needed": 6.5
+ },
+ {
+  "id": 34,
+  "connector_id": "c34",
+  "arrival": "2026-04-14T08:01:00",
+  "departure": "2026-04-14T16:50:00",
+  "user_stated_departure": "2026-04-14T17:02:00",
+  "kwh_needed": 9.7
+ },
+ {
+  "id": 35,
+  "connector_id": "c35",
+  "arrival": "2026-04-14T08:33:00",
+  "departure": "2026-04-14T16:10:00",
+  "user_stated_departure": "2026-04-14T16:15:00",
+  "kwh_needed": 7.8
+ },
+ {
+  "id": 36,
+  "connector_id": "c36",
+  "arrival": "2026-04-14T08:40:00",
+  "departure": "2026-04-14T16:35:00",
+  "user_stated_departure": "2026-04-14T17:03:00",
+  "kwh_needed": 6.5
+ },
+ {
+  "id": 37,
+  "connector_id": "c37",
+  "arrival": "2026-04-14T08:25:00",
+  "departure": "2026-04-14T17:50:00",
+  "user_stated_departure": "2026-04-14T18:07:00",
+  "kwh_needed": 7.1
+ },
+ {
+  "id": 38,
+  "connector_id": "c38",
+  "arrival": "2026-04-14T08:23:00",
+  "departure": "2026-04-14T16:45:00",
+  "user_stated_departure": "2026-04-14T17:06:00",
+  "kwh_needed": 9.5
+ },
+ {
+  "id": 39,
+  "connector_id": "c39",
+  "arrival": "2026-04-14T07:59:00",
+  "departure": "2026-04-14T16:19:00",
+  "user_stated_departure": "2026-04-14T16:21:00",
+  "kwh_needed": 6.7
+ },
+ {
+  "id": 40,
+  "connector_id": "c40",
+  "arrival": "2026-04-14T07:59:00",
+  "departure": "2026-04-14T17:24:00",
+  "user_stated_departure": "2026-04-14T17:31:00",
+  "kwh_needed": 6.0
+ }
+]
