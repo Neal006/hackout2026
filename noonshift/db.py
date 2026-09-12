@@ -1,4 +1,4 @@
-"""Postgres: schema + three write helpers. No DATABASE_URL -> every call is a no-op so sim/tests run without a DB."""
+﻿"""Postgres: schema + three write helpers. No DATABASE_URL -> every call is a no-op so sim/tests run without a DB."""
 import os
 
 import asyncpg
@@ -25,7 +25,7 @@ pool = None
 async def connect():
     global pool
     url = os.environ.get("DATABASE_URL")
-    if not url:
+    if not url or pool:
         return
     pool = await asyncpg.create_pool(url)
     async with pool.acquire() as c:
