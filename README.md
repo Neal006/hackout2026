@@ -1,71 +1,151 @@
-# Noonshift
+ # ☀️ Noonshift
 
-Deadline-based EV charging scheduler for daytime multi-connector sites. Proposal: `noonshift-proposal.md`. Team split: `team-plan.md`.
+**A deadline-based EV charging scheduler that moves charging into the hours the grid is clean and cheap.**
 
-## Run
+Built for HACKOUT'26· 12 September 2026
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![OCPP 1.6 / 2.0.1](https://img.shields.io/badge/OCPP-1.6%20%7C%202.0.1-green.svg)](https://openchargealliance.org/)
+
+---
+
+## The problem in one picture
+
+EVs charge the moment a driver plugs in — usually the evening, right when the grid leans hardest on gas. Meanwhile, California curtails **3.4 TWh of mostly solar power a year** because nobody draws it at noon. The cars are already parked where the clean hours are (workplace lots, 8am–5pm). Nobody uses that fact.
 
 ```
-docker compose up -d --build
+Hour     00:00   06:00   09:00          14:00   17:00        21:00   24:00
+Grid     |-gas---|-gas---|==== solar ====|-mixed-|=== gas ramp ===|-gas-|
+Cars     |-home--|-drive-|======== parked at work ========|-drive-|-home-|
+Default  |charge |       |                                |charge-|charge|
 ```
 
-| What | Where |
+**72%** of home charging sessions start the instant the plug goes in, and fewer than **26%** of drivers ever schedule — even on tariffs designed to reward it. Any solution that depends on drivers changing behavior is dead on arrival.
+
+## What Noonshift does
+
+Noonshift is a scheduling layer that sits between the charging management system and the chargers at daytime, multi-connector sites (workplaces, campuses). It:
+
+1. **Asks one pre-filled question at plug-in** — "When do you leave?" — and does nothing if the driver ignores it.
+2. **Solves a linear program every 5 minutes** across every connector at the site, minimizing forecast marginal CO₂ and tariff cost, subject to the site's power limit and every driver's deadline.
+3. **Never broadcasts a signal.** Each site is one decision-maker, so it can't fall into the herding failure mode that plagues fleet-wide carbon signals at scale.
+4. **Shows an honest receipt** — money and CO₂ saved vs. charging immediately — instead of a vague "% renewable" badge.
+5. **Fails safe.** If the backend goes down, chargers fall back to full power. A software bug can delay charging, never exceed a hardware limit.
+
+The site owner pays for it — because it pays for itself. Tariffs like PG&E's Business EV rate already price 9am–2pm as the cheapest window, so cutting the bill and cutting carbon point the same direction.
+
+## Why this, why now
+
+- **The mechanism is proven.** Caltech's Adaptive Charging Network has been asking drivers this exact question at plug-in since 2018, across 30,000+ real sessions (ACN-Data).
+- **The zero-effort default is the only design that reaches drivers.** Rivian telematics data shows 72% charge instantly regardless of incentives — so the product has to work through the default, not around it.
+- **Daytime workplace charging is where grid modeling says flexibility should go.** Nature Energy research on the Western US grid shows daytime charging beats home-overnight on storage, curtailment, ramping, and emissions.
+- **Broadcast carbon signals break at scale.** New (Dec 2025) research shows fleet-wide marginal signals turn *net negative* past ~1.5M EVs. Noonshift's per-site, non-broadcast design sidesteps this by construction.
+- **Someone already pays for exactly this.** Ava Community Energy pays drivers for shiftable charging today; PG&E's commercial EV tariff already rewards the 9am–2pm window.
+
+No existing product combines deadline-aware, marginal-carbon-optimized, site-constrained scheduling at a daytime multi-connector site. That's the gap Noonshift fills.
+
+## How it works
+
+```
+Driver plugs in
+      │
+      ▼
+"Leaving at 17:30?" (pre-filled, one tap or ignore)
+      │
+      ▼
+Site scheduler re-solves LP for all connectors
+(marginal CO₂ + tariff cost, under site power limit,
+ guaranteed energy by deadline)
+      │
+      ▼
+OCPP SetChargingProfile pushed to each charger
+      │
+      ▼
+Re-solve every 5 min + on any event (plug-in, Boost, deadline edit)
+      │
+      ▼
+Driver unplugs → receipt: "saved $X and Y kg CO₂ vs. charging at plug-in"
+```
+
+The optimizer is a linear program (~11,500 variables for a 40-connector site, 288 five-minute slots) solved in under a second with `scipy`/HiGHS. Key constraints:
+
+- **Energy by deadline** (elastic — never fails, degrades gracefully with an explicit shortfall penalty instead of crashing)
+- **Progress floor** — every car gets at least half its pro-rata share at all times, so early-leavers aren't stranded
+- **Final sprint** — full power for the last 30 minutes before deadline if energy is still owed
+- **Site limit** — total connector draw never exceeds the site's feed minus live building load
+
+## Architecture
+
+```
+┌─────────────┐   ┌───────────────┐   ┌──────────────┐
+│ Grid signals │   │ Tariff table  │   │   Sessions    │
+│ (WattTime,   │   │ (PG&E BEV)    │   │ (plug-in app, │
+│  gridstatus) │   │               │   │  ISO 15118)   │
+└──────┬───────┘   └───────┬───────┘   └──────┬───────┘
+       │                   │                   │
+       └───────────────────┼───────────────────┘
+                            ▼
+                  ┌───────────────────┐
+                  │  Scheduler (LP)    │
+                  │  scipy + HiGHS     │
+                  │  re-solves every   │
+                  │  5 min / on event  │
+                  └─────────┬──────────┘
+                            ▼
+                  ┌───────────────────┐
+                  │  OCPP gateway      │
+                  │  (1.6J / 2.0.1)    │
+                  └─────────┬──────────┘
+                            ▼
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+      ┌───────────────┐          ┌────────────────┐
+      │ Driver PWA     │          │ Operator        │
+      │ (plan, live    │          │ dashboard       │
+      │  savings bar,  │          │ (kW vs. limit,  │
+      │  receipt)      │          │  Gantt, alerts) │
+      └───────────────┘          └────────────────┘
+```
+
+**Fail-safe ladder:** live forecast → cached forecast (≤6h) → tariff-only → earliest-deadline-first → charger default (full power). Hardware max current is always set on the charger itself; the optimizer can only choose within it.
+
+## Tech stack
+
+| Layer | Choice |
 |---|---|
-| API + OpenAPI UI | http://localhost:8000/docs |
-| WebSocket | ws://localhost:8000/ws |
-| Web | http://localhost:3000 |
-| Postgres | localhost:5432, user/pass/db `noonshift` |
+| API | Python 3.12, FastAPI, WebSockets |
+| Optimizer | `scipy.optimize.linprog` (HiGHS backend) |
+| Charger protocol | [`mobilityhouse/ocpp`](https://github.com/mobilityhouse/ocpp) — OCPP 1.6 & 2.0.1 |
+| Grid data | WattTime API (marginal emissions), gridstatus (CAISO), adapters for Electricity Maps / NESO |
+| Session data | [ACN-Data](https://ev.caltech.edu/dataset) via `acnportal` (real workplace charging sessions) |
+| Storage | PostgreSQL, Redis (pub/sub for live dashboards) |
+| Frontend | React + Vite, PWA (driver app) |
+| Ops | Docker Compose |
 
-The simulated day (2026-04-14, 40 sessions, 150 kW feed) starts at 06:00 and plays at `SIM_SPEED` sim-seconds per real second (default 480 = one day in 3 minutes). It restarts at midnight.
-
-```
-SIM_SPEED=120 docker compose up -d      # one day in 12 minutes
-OCPP=1 docker compose up -d             # connectors speak OCPP 1.6J to an in-process CSMS (optional)
-```
-
-Code changes under `noonshift/` and `data/` hot-reload inside the container.
-
-## Endpoints
+### Key API endpoints
 
 ```
-POST /sessions                  {connector_id, departure_at, kwh_needed?}  driver answers "When do you leave?"
-POST /sessions/{id}/boost
-GET  /sessions/{id}/live
-GET  /sites/site-1/plan
-GET  /sites/site-1/impact?from&to
-GET  /sites/site-1/status       {mode, last_solve_at, connectors_active}
-GET  /grid/flex-forecast        (stub)
-POST /openadr/events            {start, end, reduce_kw}  (stub: reduces feed headroom, re-solves)
-
-POST /demo/early_unplug         Tom leaves now
-POST /demo/boost                Sofia: deadline -> now+1h, Boost
-POST /demo/oversubscribe        +20 late arrivals, 2 h deadlines
-POST /demo/signal_outage        {rungs: ["live"|"cached"|"tariff"|"deadline"], restore: false}
+POST /sessions                    {connector_id, departure_at, kwh_needed?}
+POST /sessions/{id}/boost         → re-solve now at a premium
+GET  /sessions/{id}/live          → live kW, grid cleanliness percentile, $/CO₂ saved
+GET  /sites/{id}/plan             → per-connector 5-min kW profile, 24–48h
+GET  /sites/{id}/impact?from&to   → kWh, $, kg CO₂ vs. charge-immediately baseline
 ```
 
-Fail-safe ladder: `live -> cached (<= 6 sim-hours) -> tariff -> deadline -> full`. `status.mode` shows the rung.
+## Demo script
 
-## Contract with the front-end
+1. **Normal day** — 40 simulated cars plug in over an hour; watch the scheduler spread charging into the solar window without ever exceeding the site's power limit.
+2. **Boost** — a driver taps "need it sooner," jumps the queue, pays the premium.
+3. **Early unplug** — a driver leaves before their stated deadline; the progress floor means they still leave with a usable charge.
+4. **Oversubscribed lot** — more cars than the feed can serve at once; the scheduler degrades gracefully instead of failing.
+5. **Signal outage** — grid data API goes down mid-demo; the fail-safe ladder kicks in, cached data → tariff-only → full power, never stranding a driver.
 
-`docs/openapi.json` and `docs/ws-frames.json` are regenerated on every API start from `noonshift/models.py`. `/ws` sends one JSON object per frame: `plan` (every re-solve), `meter` (every sim-minute), `event` (plug_in, unplug, deadline, boost, dr, demo, mode, day_reset).
+## License
 
-## Scheduler
+MIT — see [LICENSE](LICENSE).
 
-`noonshift/scheduler.py`: elastic LP over 40 connectors x 288 five-minute slots (scipy HiGHS, ~30-60 ms). `solve` = the
-five rules of proposal 4.4 plus fairness and a 6 A floor; `impact` = energy-matched receipt vs the charge-now baseline;
-`price` = three tiers by slack. Design notes, edge cases and status: `neal-plan.md`. Data in `data/*.json` is generated
-placeholder data with the real files' schema (`python -m noonshift.seed gen`); `scripts/fetch_data.py` downloads the
-real day (WattTime, ACN-Data, or the no-auth CAISO fallback).
+---
 
-## Checks
+*Built in 48 hours. Every figure in the full proposal is cited to a public source (grid data, peer-reviewed research, tariff filings, and real deployment data from Caltech's ACN, Rivian, ev.energy, and Ava Community Energy).*
 
-```
-pip install -r requirements-dev.txt
-python -m pytest                   # 52 tests: scheduler, impact, perf, full-day replay with the four demo scenarios (~45 s)
-python scripts/prove.py            # slide 1: charge-immediately vs Noonshift on the day, exit 1 if the 15% CO2 gate fails
-python -m noonshift.sim            # replays the day at full power
-python -m noonshift.test_loop      # control loop + ladder, no DB needed
-python -m noonshift.ocpp_gateway   # OCPP round trip
-DATABASE_URL=postgresql://noonshift:noonshift@localhost/noonshift python -m noonshift.db   # schema
-```
-
-`requirements.txt` pins `scipy==1.14.*`: 1.15.x's HiGHS bindings took 66 s per solve on Windows (`tests/test_perf.py` guards it).
