@@ -47,6 +47,7 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - Peak-based block overage in the LP means once one slot exceeds the block, exceeding everywhere is free; the post-step trim caps rounding at the block.
 - WattTime Basic (free): CAISO_NORTH only (co2_moer + health_damage); 2+ yrs history; 72 h forecast. MOER is lbs/MWh → ×0.4536 = g/kWh. Registration is `POST /register`, then a Keycloak email link that needs a **second click** ("Click here to proceed") in the same cookie session before `/login` stops returning 403. Account `neal_noonshift`, creds in `~/noonshift-credentials.json` (outside the repo). Electricity Maps free: 1 zone, 50 req/h, no forecast. NESO (GB): free, no auth.
 - Real CAISO_NORTH MOER is 0 g/kWh for hours on solar days (marginal plant is renewable), flat ~450 on winter gas days: CO2 savings ~65-70% on solar days, ~0 on gas days. On the real Caltech day $ and peak savings are only 2-3% / 1-2% (arrivals already inside super-off-peak, peak 101 kW on a 100 kW block); the seeded placeholder's -20% / -9% came from bunched arrivals, do not quote it.
+- Same-day pair exists via the CAISO fallback (WattTime Basic has no 2019 history): 2019-04-09 sessions x 2019-04-09 CAISO average = CO2 -54.2%, $ -2.9%, gate PASS. Use it for the "you mixed years" question; not in `data/` because it is average intensity.
 - ACN-Data: Caltech sessions 2018-04-25..2021-09-14 (31,424); API token appears on the portal page right after login (not by email); `kWhRequested` is a median 1.47x what the car took, so `kwh_needed` = kWhDelivered. Account `neal_noonshift`, token in `~/noonshift-credentials.json`.
 - Battery taper: the sim draws p_max*(1-SoC)/0.2 above 80% SoC; the LP bounds tapering cars by that and reserves time for the slow last 20% (TAPER_* constants), else flat-signal days leave cars 0.2 kWh short.
 - CAISO fuel mix CSV: `https://www.caiso.com/outlook/history/YYYYMMDD/fuelsource.csv`, no auth, 5-min local time; 2026-04-14 midday average is ~14 g/kWh.
@@ -68,6 +69,7 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - 2026-09-12 — Session data = ACN 2019-04-09 re-dated onto the 2026 signal day; kwh_needed = delivered energy, stated departure = the driver's own input (early leavers kept).
 
 ## Changelog
+2026-09-12 | Same-day 2019 check | neal-plan.md, AGENTS.md | 2019 sessions x 2019 CAISO average: CO2 -54.2%; story holds without mixing years
 2026-09-12 | Real ACN sessions + accounts | data/sessions.json, scripts/fetch_data.py, neal-plan.md | kwh_needed = delivered not requested; early leavers kept; CO2 -69% / $ -3% on the real day
 2026-09-12 | Real WattTime MOER + taper-aware tail | data/signal.json, noonshift/scheduler.py, tests/, neal-plan.md | Winter flat-signal day exposed taper gap; 3-day range recorded; W_CARBON kept 0.05
 2026-09-12 | Neal's lane: scheduler, impact, prove, fetch, tests | noonshift/scheduler.py, api.py, scripts/, tests/, neal-plan.md, README | 4 defects found by the day replay fixed with failing-first tests; scipy pinned 1.14

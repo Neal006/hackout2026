@@ -19,6 +19,10 @@ Contract: the three signatures in the stub Tirth froze are unchanged; `api.py` c
   day exists), re-dated onto 2026-04-14. `kwh_needed` = energy the car actually took (drivers requested a median
   1.47x that); `user_stated_departure` = what the driver typed (5 of 36 left before it, one 2.6 h early).
   **The slide must say "2019 sessions, 2026 grid signal".** Fetch commands in `scripts/fetch_data.py`.
+- Same-day check (answer to "you mixed years"): WattTime Basic has no 2019 history, but the CAISO fuel-mix fallback
+  does. 2019-04-09 sessions x 2019-04-09 CAISO **average** intensity: $ -2.9%, CO2 -54.2% (15.5 -> 7.1 kg),
+  peak -1.1%, gate PASS. Not committed to `data/` (average, not marginal); reproduce with
+  `fetch_data.py caiso --day 2019-04-09` in a scratch copy.
 
 ## Three days, real signal x real sessions (`prove.py`)
 
