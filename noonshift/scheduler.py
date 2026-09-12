@@ -1,11 +1,133 @@
-"""STUBS. Neal owns this file; his version drops in with the same three signatures and nothing else changes.
+"""Elastic LP scheduler. Drop-in for the stub: same three signatures, same dict contract, nothing else changes.
 
 Conventions the caller (api.py) relies on:
-- Every list "per slot" is aligned: index 0 is the 5-min slot containing `now`, 288 slots follow, wrapping the day.
+- Every list "per slot" is aligned: index 0 is the 5-min slot containing `now`, HORIZON slots follow, wrapping the day.
 - Fail-safe rungs shape the inputs, not the call: tariff-only => signal == {"moer": [], "kind": None};
   deadline-only => additionally tariff["price_per_kwh"] == []. Full-power rung never calls solve().
+- The charge-immediately baseline is solve() with every departure = now (all cars ASAP, see below).
+
+The LP (proposal 4.4). p[i,t] = kW for car i in slot t, s[i] = shortfall kWh, over = site kW above the tariff block.
+  minimise   sum p * SLOT_H * (price[t] + W_CARBON * moer[t] / 1000)  +  M_SHORT * s[i]  +  overage_usd_per_kw * over
+  1. energy    sum_{t < plan_end} p * SLOT_H + s[i] >= e_rem[i]                (elastic: the LP is never infeasible)
+  2. floor     energy by each 30-min checkpoint >= ALPHA * frac * (e_rem[i] - s[i])   (fairness + early-unplug safety)
+  3. sprint    plan_end = deadline - 30 min; the last 30 min are a buffer a re-solve fills at full power if energy remains
+  4. charger   0 <= p <= p_max_kw
+  5. site      sum_i p[i,t] <= feed_kw - building_load_kw[t]
+  block        sum_i p[i,t] - over <= block_kw
+  cap          sum_{t < deadline} p * SLOT_H <= e_rem[i]                       (never plan more than the car can take)
+ASAP cars (deadline already passed, or Boost): slot cost is only the earliest-first tie-break, so they charge now.
+When every car is ASAP (the baseline call) the block-overage term is dropped: charge-immediately means exactly that.
 """
+import logging
+import math
+import time
+
+import numpy as np
+from scipy.optimize import linprog
+from scipy.sparse import coo_matrix
+
+log = logging.getLogger(__name__)
+
 HORIZON = 288
+SLOT_H = 5 / 60
+MIN_KW = 1.4        # 6 A x 240 V, the IEC 61851 floor: allocations in (0, MIN_KW) round up, never pause
+W_CARBON = 0.05     # $/kg CO2 (= $50/t) trading carbon against tariff; prove.py sweeps this
+ALPHA = 0.5         # progress floor: every car holds >= half its pro-rata energy at every checkpoint
+FLOOR_EVERY = 12    # checkpoint hourly; 30-min checkpoints made the plan sip a slot every half hour, choppy on the Gantt
+SPRINT_SLOTS = 6    # last 30 min before the deadline are a buffer, not planned capacity
+M_SHORT = 10.0      # $/kWh shortfall penalty, >> any per-kWh cost, so shortfall is the last resort
+EPS = 1e-7          # earliest-first tie-break per slot, << any real cost difference
+DAYS_PER_MONTH = 30 # tariff block overage is billed monthly; one day carries 1/30 of it
+
+
+def _per_slot(xs, default=0.0):
+    """Length-HORIZON float array. [] -> default everywhere; NaN/inf -> mean of the rest; short -> pad with last."""
+    a = np.asarray(list(xs or [])[:HORIZON], dtype=float)
+    if a.size == 0:
+        return np.full(HORIZON, float(default))
+    ok = np.isfinite(a)
+    a = np.where(ok, a, a[ok].mean() if ok.any() else default)
+    if a.size < HORIZON:
+        a = np.concatenate([a, np.full(HORIZON - a.size, a[-1])])
+    return a
+
+
+def _slots_until(t, now):
+    """Whole-or-partial 5-min slots from now until t, clamped to [0, HORIZON]."""
+    return max(0, min(HORIZON, math.ceil((t - now).total_seconds() / 300)))
+
+
+def _full_power(cars):
+    return {c["connector_id"]: [float(c["p_max_kw"])] * HORIZON for c in cars}
+
+
+def solve_lp(cars, site, signal, tariff, now):
+    """solve() plus an info dict: {shortfall_kwh: {cid: kWh}, asap: [cid], status, solve_ms}."""
+    info = {"shortfall_kwh": {}, "asap": [], "status": "empty", "solve_ms": 0.0}
+    if not cars:
+        return {}, info
+    n, H = len(cars), HORIZON
+    moer = _per_slot(signal.get("moer"))
+    price = _per_slot(tariff.get("price_per_kwh"))
+    avail = np.maximum(site["feed_kw"] - _per_slot(site.get("building_load_kw")), 0.0)
+    overage = tariff.get("block_price", 0.0) * tariff.get("overage_multiplier", 2.0) / DAYS_PER_MONTH
+    slot_cost = SLOT_H * (price + W_CARBON * moer / 1000) + EPS * np.arange(H)
+
+    S = lambda i: n * H + i          # shortfall column of car i
+    OVER = n * H + n
+    nv = OVER + 1
+    c, hi = np.zeros(nv), np.zeros(nv)
+    rows, cols, vals, b = [], [], [], []
+    k = 0
+
+    def row(coeffs, rhs):
+        nonlocal k
+        for j, v in coeffs:
+            rows.append(k); cols.append(j); vals.append(v)
+        b.append(rhs); k += 1
+
+    for i, car in enumerate(cars):
+        cid, base = car["connector_id"], i * H
+        e_rem = max(0.0, float(car["kwh_needed"]) - float(car.get("kwh_delivered", 0.0)))
+        p_max = max(0.0, float(car["p_max_kw"]))
+        d = _slots_until(car["departure"], now)
+        asap = d == 0 or bool(car.get("boost"))
+        if asap:
+            info["asap"].append(cid)
+            d = H if d == 0 else d
+        if e_rem <= 0 or p_max <= 0:
+            continue
+        end = d if asap or d <= SPRINT_SLOTS else d - SPRINT_SLOTS     # rule 3: 30-min buffer
+        for t in range(d):
+            c[base + t] = EPS * t if asap else slot_cost[t]
+            hi[base + t] = p_max
+        c[S(i)], hi[S(i)] = M_SHORT, e_rem
+        row([(base + t, -SLOT_H) for t in range(end)] + [(S(i), -1.0)], -e_rem)        # rule 1 (elastic)
+        row([(base + t, SLOT_H) for t in range(d)], e_rem)                              # cap
+        if not asap:
+            for t in range(FLOOR_EVERY - 1, end, FLOOR_EVERY):                         # rule 2 (elastic)
+                frac = (t + 1) / end
+                row([(base + tt, -SLOT_H) for tt in range(t + 1)] + [(S(i), -ALPHA * frac)], -ALPHA * frac * e_rem)
+    pure_asap = len(info["asap"]) == n
+    for t in range(H):
+        row([(i * H + t, 1.0) for i in range(n)], avail[t])                            # rule 5
+        if not pure_asap:
+            row([(i * H + t, 1.0) for i in range(n)] + [(OVER, -1.0)], site.get("block_kw", math.inf))
+    c[OVER], hi[OVER] = (0.0 if pure_asap else overage), math.inf
+
+    A = coo_matrix((vals, (rows, cols)), shape=(k, nv)).tocsr()
+    t0 = time.perf_counter()
+    res = linprog(c, A_ub=A, b_ub=np.array(b), bounds=np.c_[np.zeros(nv), hi], method="highs")
+    info["solve_ms"] = round(1000 * (time.perf_counter() - t0), 1)
+    if res.status != 0:  # elastic LP cannot be infeasible; if HiGHS still fails, fail open like the ladder does
+        log.error("linprog status %s (%s); falling back to full power", res.status, res.message)
+        info["status"] = f"fallback:{res.status}"
+        return _full_power(cars), info
+    info["status"] = "optimal"
+    x = res.x
+    plan = {car["connector_id"]: np.maximum(x[i * H:(i + 1) * H], 0.0) for i, car in enumerate(cars)}
+    info["shortfall_kwh"] = {car["connector_id"]: round(float(x[S(i)]), 4) for i, car in enumerate(cars)}
+    return {cid: [round(float(v), 3) for v in p] for cid, p in plan.items()}, info
 
 
 def solve(cars, site, signal, tariff, now) -> dict[str, list[float]]:
@@ -13,10 +135,8 @@ def solve(cars, site, signal, tariff, now) -> dict[str, list[float]]:
     site: {feed_kw, building_load_kw: [per slot], block_kw}
     signal: {moer: [gCO2/kWh per slot], kind: "marginal"|"average"|None}
     tariff: {price_per_kwh: [per slot], block_price, overage_multiplier}
-    returns {connector_id: [kW per slot from now to horizon]}
-
-    Stub: full power for every car. This is also the "charge immediately" baseline."""
-    return {c["connector_id"]: [c["p_max_kw"]] * HORIZON for c in cars}
+    returns {connector_id: [kW per slot from now to horizon]}"""
+    return solve_lp(cars, site, signal, tariff, now)[0]
 
 
 def impact(plan, baseline, signal, tariff) -> dict[str, float]:
