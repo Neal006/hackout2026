@@ -8,13 +8,16 @@ Conventions the caller (api.py) relies on:
 
 The LP (proposal 4.4). p[i,t] = kW for car i in slot t, s[i] = shortfall kWh, over = site kW above the tariff block.
   minimise   sum p * SLOT_H * (price[t] + W_CARBON * moer[t] / 1000)  +  M_SHORT * s[i]  +  overage_usd_per_kw * over
-  1. energy    sum_{t < plan_end} p * SLOT_H + s[i] >= e_rem[i]                (elastic: the LP is never infeasible)
-  2. floor     energy by each 30-min checkpoint >= ALPHA * frac * (e_rem[i] - s[i])   (fairness + early-unplug safety)
-  3. sprint    plan_end = deadline - 30 min; the last 30 min are a buffer a re-solve fills at full power if energy remains
+  1. energy    sum_{t < deadline} p * SLOT_H + s[i] >= e_rem[i]                (elastic: the LP is never infeasible)
+  2. floor     energy by each hourly checkpoint >= ALPHA * frac * (e_rem[i] - s[i])   (fairness + early-unplug safety)
+  3. sprint    the last 30 min before the deadline carry a BUFFER_COST surcharge, so a feasible car finishes early and
+               the buffer is spent only by cars that would otherwise fall short (and by re-solves after a bad forecast)
   4. charger   0 <= p <= p_max_kw
   5. site      sum_i p[i,t] <= feed_kw - building_load_kw[t]
   block        sum_i p[i,t] - over <= block_kw
   cap          sum_{t < deadline} p * SLOT_H <= e_rem[i]                       (never plan more than the car can take)
+  fairness     s[i] / e_rem[i] <= z, z priced at M_SHORT * mean(e_rem): a linear shortfall penalty alone starves
+               whole cars when the lot is oversubscribed; minimising the worst fraction spreads the shortfall instead
 ASAP cars (deadline already passed, or Boost): slot cost is only the earliest-first tie-break, so they charge now.
 When every car is ASAP (the baseline call) the block-overage term is dropped: charge-immediately means exactly that.
 """
@@ -34,7 +37,8 @@ MIN_KW = 1.4        # 6 A x 240 V, the IEC 61851 floor: allocations in (0, MIN_K
 W_CARBON = 0.05     # $/kg CO2 (= $50/t) trading carbon against tariff; prove.py sweeps this
 ALPHA = 0.5         # progress floor: every car holds >= half its pro-rata energy at every checkpoint
 FLOOR_EVERY = 12    # checkpoint hourly; 30-min checkpoints made the plan sip a slot every half hour, choppy on the Gantt
-SPRINT_SLOTS = 6    # last 30 min before the deadline are a buffer, not planned capacity
+SPRINT_SLOTS = 6    # last 30 min before the deadline are a buffer: used only when the car would otherwise fall short
+BUFFER_COST = 1.0   # $/kWh surcharge on buffer slots, >> any tariff spread and << M_SHORT
 M_SHORT = 10.0      # $/kWh shortfall penalty, >> any per-kWh cost, so shortfall is the last resort
 EPS = 1e-7          # earliest-first tie-break per slot, << any real cost difference
 DAYS_PER_MONTH = 30 # tariff block overage is billed monthly; one day carries 1/30 of it
@@ -75,8 +79,10 @@ def solve_lp(cars, site, signal, tariff, now):
 
     S = lambda i: n * H + i          # shortfall column of car i
     OVER = n * H + n
-    nv = OVER + 1
+    Z = OVER + 1                     # worst shortfall fraction over all cars (min-max fairness)
+    nv = Z + 1
     c, hi = np.zeros(nv), np.zeros(nv)
+    e_rems = []
     rows, cols, vals, b = [], [], [], []
     k = 0
 
@@ -99,11 +105,13 @@ def solve_lp(cars, site, signal, tariff, now):
             continue
         end = d if asap or d <= SPRINT_SLOTS else d - SPRINT_SLOTS     # rule 3: 30-min buffer
         for t in range(d):
-            c[base + t] = EPS * t if asap else slot_cost[t]
+            c[base + t] = EPS * t if asap else slot_cost[t] + (BUFFER_COST * SLOT_H if t >= end else 0.0)
             hi[base + t] = p_max
         c[S(i)], hi[S(i)] = M_SHORT, e_rem
-        row([(base + t, -SLOT_H) for t in range(end)] + [(S(i), -1.0)], -e_rem)        # rule 1 (elastic)
+        e_rems.append(e_rem)
+        row([(base + t, -SLOT_H) for t in range(d)] + [(S(i), -1.0)], -e_rem)          # rule 1 (elastic)
         row([(base + t, SLOT_H) for t in range(d)], e_rem)                              # cap
+        row([(S(i), 1.0), (Z, -e_rem)], 0.0)                                            # s[i] / e_rem[i] <= z
         if not asap:
             for t in range(FLOOR_EVERY - 1, end, FLOOR_EVERY):                         # rule 2 (elastic)
                 frac = (t + 1) / end
@@ -114,6 +122,7 @@ def solve_lp(cars, site, signal, tariff, now):
         if not pure_asap:
             row([(i * H + t, 1.0) for i in range(n)] + [(OVER, -1.0)], site.get("block_kw", math.inf))
     c[OVER], hi[OVER] = (0.0 if pure_asap else overage), math.inf
+    c[Z], hi[Z] = M_SHORT * (sum(e_rems) / len(e_rems) if e_rems else 0.0), 1.0   # a mean car's worth of shortfall
 
     A = coo_matrix((vals, (rows, cols)), shape=(k, nv)).tocsr()
     t0 = time.perf_counter()
