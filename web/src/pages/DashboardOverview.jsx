@@ -1,6 +1,13 @@
 import { useGlobalState } from '../context/GlobalStateContext';
 import { useNavigate } from 'react-router-dom';
 
+// 06:00-22:00 on x (0-1000); the dashed limit line sits at y=20, zero load at y=180. Hours not yet reached stay at 0.
+const linePoints = (ticks, pick, limitKw) =>
+  ticks
+    .filter((t) => t.time >= 6 && t.time <= 22)
+    .map((t) => `${((t.time - 6) / 16) * 1000},${180 - Math.min(1, pick(t) / (limitKw || 1)) * 160}`)
+    .join(' ');
+
 export default function DashboardOverview() {
   const { data } = useGlobalState();
   const { portfolio, sites } = data;
@@ -11,12 +18,10 @@ export default function DashboardOverview() {
       <header className="mb-8 flex justify-between items-end border-b border-border pb-4">
         <div>
           <h1 className="text-2xl font-semibold text-ink">Operations Overview</h1>
-          <p className="text-sm text-ink-muted mt-1">Today - September 12, 2026</p>
+          <p className="text-sm text-ink-muted mt-1">Replay day {data.simTime ? new Date(data.simTime).toDateString() : "—"} · live from Noonshift</p>
         </div>
         <select className="border border-border bg-surface text-sm p-2 outline-none">
-          <option>All sites</option>
-          <option>Ahmedabad Office</option>
-          <option>Campus North</option>
+          <option>{data.siteDetail.id}</option>
         </select>
       </header>
 
@@ -24,11 +29,11 @@ export default function DashboardOverview() {
       <div className="flex items-center gap-8 mb-12 border-b border-border pb-8">
         <div className="flex flex-col flex-1 border-r border-border pr-8">
           <span className="text-xs text-ink-muted mb-1">Active sites</span>
-          <span className="mono text-2xl text-ink font-medium">{portfolio.totalSites} / 14</span>
+          <span className="mono text-2xl text-ink font-medium">{portfolio.totalSites}</span>
         </div>
         <div className="flex flex-col flex-1 border-r border-border pr-8">
           <span className="text-xs text-ink-muted mb-1">Charging now</span>
-          <span className="mono text-2xl text-ink font-medium">86 connectors</span>
+          <span className="mono text-2xl text-ink font-medium">{portfolio.activeSessions} / {portfolio.connectors} connectors</span>
         </div>
         <div className="flex flex-col flex-1 border-r border-border pr-8">
           <span className="text-xs text-ink-muted mb-1">Energy scheduled</span>
@@ -39,7 +44,7 @@ export default function DashboardOverview() {
           <span className="mono text-2xl text-saved font-medium">${portfolio.totalSavingsUsd}</span>
         </div>
         <div className="flex flex-col flex-1 border-r border-border pr-8">
-          <span className="text-xs text-ink-muted mb-1">Peak avoided</span>
+          <span className="text-xs text-ink-muted mb-1">Min headroom today</span>
           <span className="mono text-2xl text-ink font-medium">{portfolio.peakAvoidedKw} kW</span>
         </div>
         <div className="flex flex-col flex-1">
@@ -56,15 +61,15 @@ export default function DashboardOverview() {
           <div className="flex gap-12 border-b border-border pb-4">
             <div className="flex flex-col">
               <span className="text-xs text-ink-muted uppercase tracking-wider mb-1">Current EV Load</span>
-              <span className="mono text-xl text-solar font-medium">{portfolio.currentDemandKw} kW</span>
+              <span className="mono text-xl text-solar font-medium">{data.siteDetail.evLoadKw} kW</span>
             </div>
             <div className="flex flex-col">
               <span className="text-xs text-ink-muted uppercase tracking-wider mb-1">Building Load</span>
-              <span className="mono text-xl text-ink font-medium">210 kW</span>
+              <span className="mono text-xl text-ink font-medium">{data.siteDetail.buildingLoadKw} kW</span>
             </div>
             <div className="flex flex-col">
               <span className="text-xs text-ink-muted uppercase tracking-wider mb-1">Available</span>
-              <span className="mono text-xl text-ink font-medium">{portfolio.limitKw - portfolio.currentDemandKw - 210} kW</span>
+              <span className="mono text-xl text-ink font-medium">{portfolio.limitKw - portfolio.currentDemandKw} kW</span>
             </div>
           </div>
 
@@ -72,15 +77,12 @@ export default function DashboardOverview() {
             <div className="relative h-48 min-w-[800px]">
               <svg viewBox="0 0 1000 200" preserveAspectRatio="none" className="w-full h-full overflow-visible">
                 <line x1="0" y1="20" x2="1000" y2="20" stroke="var(--color-danger)" strokeDasharray="4 4" />
-                <text x="940" y="15" className="text-xs fill-danger">Site Limit</text>
-                <text x="0" y="195" className="text-[10px] fill-ink-muted">08:00</text>
-                <text x="250" y="195" className="text-[10px] fill-ink-muted">10:00</text>
-                <text x="500" y="195" className="text-[10px] fill-ink-muted">12:00</text>
-                <text x="750" y="195" className="text-[10px] fill-ink-muted">14:00</text>
-                <text x="1000" y="195" className="text-[10px] fill-ink-muted">16:00</text>
-  
-                <polyline fill="none" stroke="var(--color-ink-muted)" strokeWidth="1" points="0,150 250,130 500,140 750,120 1000,130" />
-                <polyline fill="none" stroke="var(--color-solar)" strokeWidth="2" points="0,130 250,80 500,40 750,90 1000,100" />
+                <text x="900" y="15" className="text-xs fill-danger">Site Limit {portfolio.limitKw} kW</text>
+                {[6, 10, 14, 18, 22].map((h) => (
+                  <text key={h} x={((h - 6) / 16) * 1000} y="195" className="text-[10px] fill-ink-muted">{String(h).padStart(2, '0')}:00</text>
+                ))}
+                <polyline fill="none" stroke="var(--color-ink-muted)" strokeWidth="1" points={linePoints(data.siteDetail.meter_ticks, (t) => t.building, portfolio.limitKw)} />
+                <polyline fill="none" stroke="var(--color-solar)" strokeWidth="2" points={linePoints(data.siteDetail.meter_ticks, (t) => t.ev + t.building, portfolio.limitKw)} />
               </svg>
             </div>
           </div>

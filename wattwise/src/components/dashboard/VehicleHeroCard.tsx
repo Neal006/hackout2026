@@ -1,7 +1,7 @@
 import React from 'react';
 import { Zap, Cable, ChevronRight } from 'lucide-react';
 import { useWattwise } from '../../context/WattwiseContext';
-import { estimateKmRange } from '../../utils/formatters';
+import { estimateKmRange, formatCurrency } from '../../utils/formatters';
 
 export const VehicleHeroCard: React.FC = () => {
   const { vehicle, schedule, openConnectModal, setCurrentNav, disconnectVehicle } = useWattwise();
@@ -121,7 +121,7 @@ export const VehicleHeroCard: React.FC = () => {
 
           <div className="p-2.5 rounded-lg bg-neutral-50 border border-neutral-100">
             <span className="text-neutral-400 block text-[10px] font-mono uppercase">Cost / Savings</span>
-            <span className="font-bold text-emerald-600 font-mono text-sm">₹{schedule.smartCost} (Save ₹{schedule.savings})</span>
+            <span className="font-bold text-emerald-600 font-mono text-sm">{formatCurrency(schedule.smartCost)} (Save {formatCurrency(schedule.savings)})</span>
           </div>
         </div>
       )}

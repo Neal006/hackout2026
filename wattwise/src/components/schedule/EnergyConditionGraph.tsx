@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HOURLY_ENERGY_DATA } from '../../utils/mockData';
+import { useWattwise } from '../../context/WattwiseContext';
 import type { HourlyDataPoint } from '../../types/wattwise';
 import { Zap, TrendingDown, Leaf, Info } from 'lucide-react';
 
@@ -14,7 +14,8 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
   const [activeMetric, setActiveMetric] = useState<'tariff' | 'demand' | 'renewable'>('tariff');
   const [hoveredPoint, setHoveredPoint] = useState<HourlyDataPoint | null>(null);
 
-  const data = HOURLY_ENERGY_DATA;
+  const { hourly } = useWattwise();
+  const data = hourly;
 
   // Chart dimensions
   const width = 800;
@@ -28,11 +29,11 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
   const chartHeight = height - paddingTop - paddingBottom;
 
   // Min / Max for scales
-  const minTariff = 3.0;
-  const maxTariff = 5.0;
+  const minTariff = data.length ? Math.min(...data.map((d) => d.tariff)) : 0;
+  const maxTariff = data.length ? Math.max(...data.map((d) => d.tariff), minTariff + 0.01) : 1;
 
-  const minDemand = 1.0;
-  const maxDemand = 5.5;
+  const minDemand = 0;
+  const maxDemand = data.length ? Math.max(...data.map((d) => d.gridDemandGw), 10) : 10;
 
   const getX = (index: number) => {
     return paddingLeft + (index / (data.length - 1)) * chartWidth;
@@ -52,9 +53,10 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
   const tariffPoints = data.map((d, i) => `${getX(i)},${getTariffY(d.tariff)}`).join(' ');
   const demandPoints = data.map((d, i) => `${getX(i)},${getDemandY(d.gridDemandGw)}`).join(' ');
 
-  // Optimal charging window indices (approx 11:40 PM to 2:10 AM, index 5.7 to 8.2)
-  const optimalStartX = paddingLeft + (5.7 / (data.length - 1)) * chartWidth;
-  const optimalEndX = paddingLeft + (8.2 / (data.length - 1)) * chartWidth;
+  // Optimal window = the hours the plan actually charges this car (isOptimal from the plan frame)
+  const optIdx = data.map((d, i) => (d.isOptimal ? i : -1)).filter((i) => i >= 0);
+  const optimalStartX = optIdx.length ? getX(optIdx[0]) : paddingLeft;
+  const optimalEndX = optIdx.length ? getX(optIdx[optIdx.length - 1] + 1 < data.length ? optIdx[optIdx.length - 1] + 1 : optIdx[optIdx.length - 1]) : paddingLeft;
 
   return (
     <div className="w-full bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-sm">
@@ -70,7 +72,7 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
             </span>
           </div>
           <p className="text-xs text-neutral-500 mt-0.5">
-            Hourly electricity price (₹/kWh) vs regional grid demand (GW)
+            Hourly tariff ($/kWh), site load (kW) and grid carbon (WattTime marginal, estimate)
           </p>
         </div>
 
@@ -84,7 +86,7 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
                 : 'text-neutral-500 hover:text-neutral-900'
             }`}
           >
-            ⚡ Tariff (₹/kWh)
+            ⚡ Tariff ($/kWh)
           </button>
           <button
             onClick={() => setActiveMetric('demand')}
@@ -94,7 +96,7 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
                 : 'text-neutral-500 hover:text-neutral-900'
             }`}
           >
-            📉 Grid Demand (GW)
+            📉 Site Load (kW)
           </button>
           <button
             onClick={() => setActiveMetric('renewable')}
@@ -104,7 +106,7 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
                 : 'text-neutral-500 hover:text-neutral-900'
             }`}
           >
-            🌱 Renewable %
+            🌱 Grid Clean %
           </button>
         </div>
       </div>
@@ -152,9 +154,9 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
                   fill="#A3A39E"
                 >
                   {activeMetric === 'tariff'
-                    ? `₹${(maxTariff - ratio * (maxTariff - minTariff)).toFixed(1)}`
+                    ? `$${(maxTariff - ratio * (maxTariff - minTariff)).toFixed(2)}`
                     : activeMetric === 'demand'
-                    ? `${(maxDemand - ratio * (maxDemand - minDemand)).toFixed(1)}G`
+                    ? `${(maxDemand - ratio * (maxDemand - minDemand)).toFixed(0)}kW`
                     : `${Math.round(100 - ratio * 100)}%`}
                 </text>
               </g>
@@ -294,15 +296,15 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
             </div>
             <div className="flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>Tariff: <strong className="font-mono">₹{hoveredPoint.tariff.toFixed(2)}/kWh</strong></span>
+              <span>Tariff: <strong className="font-mono">${hoveredPoint.tariff.toFixed(3)}/kWh</strong></span>
             </div>
             <div className="flex items-center gap-1.5">
               <TrendingDown className="w-3.5 h-3.5 text-blue-400" />
-              <span>Demand: <strong className="font-mono">{hoveredPoint.gridDemandGw} GW</strong></span>
+              <span>Site load: <strong className="font-mono">{hoveredPoint.gridDemandGw.toFixed(1)} kW</strong></span>
             </div>
             <div className="flex items-center gap-1.5">
               <Leaf className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Renewables: <strong className="font-mono">{hoveredPoint.renewablePercent}%</strong></span>
+              <span>Grid clean: <strong className="font-mono">{hoveredPoint.renewablePercent}%</strong></span>
             </div>
           </div>
         )}
@@ -313,11 +315,11 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-0.5 bg-neutral-900" />
-            <span>Electricity Tariff (₹/kWh)</span>
+            <span>Electricity Tariff ($/kWh)</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-0.5 border-t-2 border-dashed border-neutral-400" />
-            <span>Grid Demand (GW)</span>
+            <span>Site Load (kW)</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded bg-[#D4F634]/50 border border-[#A3C610]" />
@@ -327,7 +329,7 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
 
         <div className="flex items-center gap-1 text-neutral-600 font-mono text-[11px]">
           <Info className="w-3.5 h-3.5 text-neutral-400" />
-          <span>Shifting avoids the 5.2 GW peak and locks in ₹3.35–₹3.38/kWh</span>
+          <span>Shifting avoids the 5.2 GW peak and locks in $3.35–$3.38/kWh</span>
         </div>
       </div>
     </div>

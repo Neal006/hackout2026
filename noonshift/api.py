@@ -15,7 +15,7 @@ from pydantic import TypeAdapter
 
 from . import db, scheduler, seed
 from .models import (WS_FRAMES, ConnectorMeter, ConnectorPlan, DemoOut, DrEvent, EventMsg, FlexHour, ImpactOut,
-                     LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, SessionIn, SessionOut, StatusOut)
+                     LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, SessionIn, SessionOut, SignalHour, StatusOut)
 from .sim import SLOT, SPEED, Connector, Sim, load_sessions
 
 S = {}  # site, signal, tariff, sim, plan, plan_at, baseline, impact, mode, ladder, live_lost_at, last_solve_at, dr, clients, next_id
@@ -333,6 +333,17 @@ def site_status(site_id: str):
     check_site(site_id)
     return StatusOut(mode=S["mode"], last_solve_at=S["last_solve_at"],
                      connectors_active=sum(c.status == "charging" for c in S["sim"].active()))
+
+
+@app.get("/grid/signal", response_model=list[SignalHour])
+def grid_signal():
+    """Today's grid signal and tariff by hour, for the driver app's 'why this hour' graph."""
+    moer, price = S["signal"]["moer"], S["tariff"]["price_per_kwh"]  # both g/kWh and $/kWh per 5-min slot
+    per_hour = len(moer) // 24
+    return [SignalHour(hour=h, kind=S["signal"]["kind"],
+                       gco2_per_kwh=round(sum(moer[h * per_hour:(h + 1) * per_hour]) / per_hour, 1),
+                       usd_per_kwh=round(sum(price[h * 12:(h + 1) * 12]) / 12, 4))
+            for h in range(24)]
 
 
 @app.get("/grid/flex-forecast", response_model=list[FlexHour])

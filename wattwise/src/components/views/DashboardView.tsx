@@ -66,19 +66,19 @@ export const DashboardView: React.FC = () => {
             <div className="mt-2 space-y-3">
               <div className="flex items-center justify-between text-xs pb-2 border-b border-neutral-100">
                 <span className="text-neutral-500">Connected at:</span>
-                <span className="font-bold text-neutral-900 font-mono">6:30 PM (Today)</span>
+                <span className="font-bold text-neutral-900 font-mono">{schedule.connectTime}</span>
               </div>
               <div className="flex items-center justify-between text-xs pb-2 border-b border-neutral-100">
                 <span className="text-neutral-500">Must depart by:</span>
-                <span className="font-bold text-neutral-900 font-mono">11:00 AM (Tomorrow)</span>
+                <span className="font-bold text-neutral-900 font-mono">{schedule.departureTime}</span>
               </div>
               <div className="flex items-center justify-between text-xs pb-2 border-b border-neutral-100">
                 <span className="text-neutral-500">Flexibility buffer:</span>
-                <span className="font-bold text-[#A3C610] font-mono">16h 30m</span>
+                <span className="font-bold text-[#A3C610] font-mono">{schedule.flexibilityHours}h {schedule.flexibilityMinutes}m</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-neutral-500">Target battery:</span>
-                <span className="font-bold text-neutral-900 font-mono">90% (+28.4 kWh)</span>
+                <span className="font-bold text-neutral-900 font-mono">{vehicle.targetSoC}% (+{schedule.energyNeededKwh} kWh)</span>
               </div>
             </div>
           </div>

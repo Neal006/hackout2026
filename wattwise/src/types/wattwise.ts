@@ -48,7 +48,7 @@ export interface ChargingSchedule {
 export interface HourlyDataPoint {
   hourLabel: string; // e.g. "6 PM"
   rawHour: number; // 18 for 6 PM, 23 for 11 PM, 2 for 2 AM etc.
-  tariff: number; // in ₹/kWh e.g. 4.50, 3.38
+  tariff: number; // in $/kWh e.g. 4.50, 3.38
   gridDemandGw: number; // e.g. 4.8, 1.8
   renewablePercent: number; // e.g. 38%, 84%
   isOptimal: boolean;

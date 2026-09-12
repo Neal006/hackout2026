@@ -1,5 +1,6 @@
 export function formatCurrency(amount: number): string {
-  return `₹${Math.round(amount)}`;
+  const v = Math.abs(amount) < 0.005 ? 0 : amount; // no "$-0.00"
+  return `$${v.toFixed(2)}`;
 }
 
 export function formatKw(kw: number): string {

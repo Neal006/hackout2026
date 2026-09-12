@@ -289,6 +289,29 @@
     }
    }
   },
+  "/grid/signal": {
+   "get": {
+    "summary": "Grid Signal",
+    "description": "Today's grid signal and tariff by hour, for the driver app's 'why this hour' graph.",
+    "operationId": "grid_signal_grid_signal_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SignalHour"
+         },
+         "type": "array",
+         "title": "Response Grid Signal Grid Signal Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/grid/flex-forecast": {
    "get": {
     "summary": "Flex Forecast",
@@ -896,6 +919,38 @@
      "boost"
     ],
     "title": "SessionOut"
+   },
+   "SignalHour": {
+    "properties": {
+     "hour": {
+      "type": "integer",
+      "title": "Hour"
+     },
+     "gco2_per_kwh": {
+      "type": "number",
+      "title": "Gco2 Per Kwh"
+     },
+     "usd_per_kwh": {
+      "type": "number",
+      "title": "Usd Per Kwh"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "marginal",
+       "average"
+      ],
+      "title": "Kind"
+     }
+    },
+    "type": "object",
+    "required": [
+     "hour",
+     "gco2_per_kwh",
+     "usd_per_kwh",
+     "kind"
+    ],
+    "title": "SignalHour"
    },
    "StatusOut": {
     "properties": {

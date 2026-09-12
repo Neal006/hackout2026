@@ -68,6 +68,13 @@ class FlexHour(BaseModel):
     shiftable_kw: float
 
 
+class SignalHour(BaseModel):
+    hour: int
+    gco2_per_kwh: float  # hourly mean of the marginal signal; label as estimate
+    usd_per_kwh: float
+    kind: Literal["marginal", "average"]
+
+
 class DrEvent(BaseModel):
     start: datetime
     end: datetime

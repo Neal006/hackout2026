@@ -79,7 +79,7 @@ export default function OpsDashboard() {
                 <div className="flex border-b border-border bg-bg px-4 py-2">
                   <div className="w-16 text-xs text-ink-muted mono shrink-0">CN</div>
                   <div className="flex-1 flex justify-between text-[10px] text-ink-muted mono">
-                    <span>08:00</span><span>10:00</span><span>12:00</span><span>14:00</span><span>16:00</span><span>18:00</span>
+                    <span>06:00</span><span>08:00</span><span>10:00</span><span>12:00</span><span>14:00</span><span>16:00</span><span>18:00</span><span>20:00</span><span>22:00</span>
                   </div>
                 </div>
                 
@@ -145,15 +145,15 @@ export default function OpsDashboard() {
                     </div>
                     <div className="flex justify-between border-b border-border pb-2">
                       <span className="text-ink-muted">Scheduled</span>
-                      <span className="mono">11:10-12:20</span>
+                      <span className="mono">{selectedConnector.scheduled}</span>
                     </div>
                     <div className="flex justify-between border-b border-border pb-2">
                       <span className="text-ink-muted">Ready by</span>
-                      <span className="mono">17:30</span>
+                      <span className="mono">{selectedConnector.readyBy}</span>
                     </div>
                     <div className="flex justify-between border-b border-border pb-2">
                       <span className="text-ink-muted">Deadline risk</span>
-                      <span className="font-medium text-saved">Low</span>
+                      <span className={`font-medium ${selectedConnector.risk === 'High' ? 'text-danger' : 'text-saved'}`}>{selectedConnector.risk}</span>
                     </div>
                   </div>
 

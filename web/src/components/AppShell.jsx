@@ -39,7 +39,7 @@ export default function AppShell() {
         <div className="border-t border-border p-4 flex flex-col gap-4 bg-bg text-sm">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${data.systemStatus === 'Optimal' ? 'bg-saved' : 'bg-solar'}`}></div>
-            <span className="text-xs text-ink-muted">System {data.systemStatus}</span>
+            <span className="text-xs text-ink-muted">System {data.systemStatus} · mode {data.siteDetail.mode}{data.simTime ? ` · sim ${new Date(data.simTime).toTimeString().slice(0, 5)}` : ""}</span>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -47,6 +47,7 @@ export default function AppShell() {
             <button onClick={() => triggerEvent('demo_driver_early')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Driver leaves early</button>
             <button onClick={() => triggerEvent('demo_late_surge')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">20 late arrivals</button>
             <button onClick={() => triggerEvent('demo_grid_fail')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Grid signal unavailable</button>
+            <button onClick={() => triggerEvent('demo_grid_restore')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Restore grid signal</button>
           </div>
         </div>
       </nav>

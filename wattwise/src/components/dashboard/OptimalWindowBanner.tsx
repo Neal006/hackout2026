@@ -103,7 +103,7 @@ export const OptimalWindowBanner: React.FC = () => {
                   ⚡ Lower electricity cost
                 </div>
                 <div className="text-xs text-neutral-500 mt-0.5">
-                  Super off-peak rate of <strong>₹3.38/kWh</strong> vs <strong>₹4.50/kWh</strong> peak evening tariff.
+                  Super off-peak rate of <strong>$3.38/kWh</strong> vs <strong>$4.50/kWh</strong> peak evening tariff.
                 </div>
               </div>
             </div>
