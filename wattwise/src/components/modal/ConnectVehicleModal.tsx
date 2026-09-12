@@ -1,20 +1,43 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X, Calendar, Clock, Zap, ArrowRight, AlertCircle, Sparkles, BatteryCharging } from 'lucide-react';
 import { useWattwise } from '../../context/WattwiseContext';
 import { calculateFlexibility, estimateKmRange } from '../../utils/formatters';
+import type { PricePreview } from '../../api/noonshift';
+
+const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export const ConnectVehicleModal: React.FC = () => {
-  const { isConnectModalOpen, setIsConnectModalOpen, vehicle, startOptimizationFlow } = useWattwise();
+  const { isConnectModalOpen, setIsConnectModalOpen, vehicle, startOptimizationFlow, simTime, previewPrice } = useWattwise();
 
-  // Dates: Default today 18:30, tomorrow 11:00
-  const todayStr = '2026-09-12';
-  const tomorrowStr = '2026-09-13';
-
-  const [connectDate, setConnectDate] = useState<string>(todayStr);
-  const [connectTime, setConnectTime] = useState<string>('18:30');
-  const [departureDate, setDepartureDate] = useState<string>(tomorrowStr);
-  const [departureTime, setDepartureTime] = useState<string>('11:00');
+  // Plug-in is "now" on the sim clock; the default ready-by is 4 h out (pre-filled, one tap to accept)
+  const now = simTime ? new Date(simTime) : new Date();
+  const [connectDate, setConnectDate] = useState<string>(ymd(now));
+  const [connectTime, setConnectTime] = useState<string>(hhmm(now));
+  const [departureDate, setDepartureDate] = useState<string>(ymd(now));
+  const [departureTime, setDepartureTime] = useState<string>(hhmm(new Date(now.getTime() + 4 * 3600000)));
   const [targetSoC, setTargetSoC] = useState<number>(vehicle.targetSoC || 90);
+  const [price, setPrice] = useState<PricePreview | null>(null);
+
+  useEffect(() => {
+    if (!isConnectModalOpen || !simTime) return;
+    const t = new Date(simTime);
+    setConnectDate(ymd(t));
+    setConnectTime(hhmm(t));
+    setDepartureDate(ymd(t));
+    setDepartureTime(hhmm(new Date(t.getTime() + 4 * 3600000)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnectModalOpen]);
+
+  // Deadline sets the price: preview the tier for this ready-by (GET /price)
+  useEffect(() => {
+    if (!isConnectModalOpen) return;
+    let stale = false;
+    previewPrice(departureTime, targetSoC).then((p) => !stale && setPrice(p));
+    return () => {
+      stale = true;
+    };
+  }, [isConnectModalOpen, departureTime, targetSoC, previewPrice]);
 
   // Dynamic flexibility calculation
   const flex = useMemo(() => {
@@ -176,7 +199,24 @@ export const ConnectVehicleModal: React.FC = () => {
                   <div className="text-xs font-medium text-neutral-200">~{estimatedHours}h at {vehicle.maxChargeRateKw}kW</div>
                 </div>
               </div>
-            ) : (
+            ) : null}
+            {/* Deadline sets the price: the three tiers, the one this ready-by earns highlighted */}
+            {flex.isValid && price ? (
+              <div className="mt-3 pt-3 border-t border-neutral-700 flex flex-wrap items-center gap-2 text-[11px] font-mono">
+                <span className="text-neutral-400 mr-1">Your rate:</span>
+                {price.tiers.map((t) => (
+                  <span
+                    key={t.tier}
+                    className={`px-2 py-0.5 rounded-full border ${
+                      t.tier === price.price.tier ? 'bg-[#D4F634] text-neutral-950 border-[#D4F634] font-bold' : 'text-neutral-300 border-neutral-600'
+                    }`}
+                  >
+                    {t.tier} ${t.usd_per_kwh.toFixed(2)}/kWh{t.min_slack_hours > 0 ? ` · ≥${t.min_slack_hours}h slack` : ' · <1h'}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {!flex.isValid && (
               <div className="flex items-center gap-2 text-xs font-medium">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                 <span>Departure time must be strictly after plug-in time.</span>

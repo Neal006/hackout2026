@@ -119,8 +119,8 @@ The optimizer is a linear program (~11,500 variables for a 40-connector site, 28
 | Charger protocol | [`mobilityhouse/ocpp`](https://github.com/mobilityhouse/ocpp) — OCPP 1.6 & 2.0.1 |
 | Grid data | WattTime API (marginal emissions), gridstatus (CAISO), adapters for Electricity Maps / NESO |
 | Session data | [ACN-Data](https://ev.caltech.edu/dataset) via `acnportal` (real workplace charging sessions) |
-| Storage | PostgreSQL, Redis (pub/sub for live dashboards) |
-| Frontend | React + Vite, PWA (driver app) |
+| Storage | PostgreSQL (optional; in-process state + FastAPI WebSocket for live dashboards, no Redis) |
+| Frontend | Two React + Vite apps: `web/` ops dashboard, `wattwise/` driver PWA |
 | Ops | Docker Compose |
 
 ### Key API endpoints
@@ -133,7 +133,30 @@ GET  /sites/{id}/plan             → per-connector 5-min kW profile, 24–48h
 GET  /sites/{id}/impact?from&to   → kWh, $, kg CO₂ vs. charge-immediately baseline
 ```
 
+## Run it
+
+Everything runs offline from the frozen day in `data/` (WattTime CAISO_NORTH marginal signal for 2026-04-14 + 36 real ACN Caltech sessions from 2019-04-09, re-dated).
+
+```bash
+python -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt   # Windows; use .venv/bin/pip elsewhere
+python -m pytest                       # 53 tests, ~45 s
+python scripts/prove.py                # slide 1: charge-now vs Noonshift on the real day
+
+SIM_SPEED=60 uvicorn noonshift.api:app --port 8000   # 1 sim-minute per second (default 480 = a day in 3 min)
+cd web      && npm install && npm run dev            # ops dashboard  → http://localhost:5173/ops/overview
+cd wattwise && npm install && npm run dev            # driver app     → http://localhost:5174
+python scripts/smoke.py                              # no browser: driver REST → /ws → ops; prints SMOKE OK
+```
+
+Windows one-liner for all three processes: `powershell -File scripts/dev.ps1`.
+
+Docker: `npm run build` in `web/` and `wattwise/`, then `docker compose up --build` → API :8000, ops :3000, driver :3001 (Postgres included; without it the API runs in-process and says so).
+
+OpenAPI lives at `docs/openapi.json` (regenerated on every start), WebSocket frames at `docs/ws-frames.json`. Set `OCPP=1` to run the simulated chargers over OCPP 1.6J instead of direct calls.
+
 ## Demo script
+
+Timed 4-minute version with what the audience sees per beat: [`pitch/demo-script.md`](pitch/demo-script.md). Slides: [`pitch/deck.md`](pitch/deck.md). Q&A: [`pitch/hard-questions.md`](pitch/hard-questions.md).
 
 1. **Normal day** — 40 simulated cars plug in over an hour; watch the scheduler spread charging into the solar window without ever exceeding the site's power limit.
 2. **Boost** — a driver taps "need it sooner," jumps the queue, pays the premium.

@@ -44,7 +44,7 @@ export default function DashboardOverview() {
           <span className="mono text-2xl text-saved font-medium">${portfolio.totalSavingsUsd}</span>
         </div>
         <div className="flex flex-col flex-1 border-r border-border pr-8">
-          <span className="text-xs text-ink-muted mb-1">Min headroom today</span>
+          <span className="text-xs text-ink-muted mb-1">Peak avoided (est.)</span>
           <span className="mono text-2xl text-ink font-medium">{portfolio.peakAvoidedKw} kW</span>
         </div>
         <div className="flex flex-col flex-1">
@@ -78,6 +78,12 @@ export default function DashboardOverview() {
               <svg viewBox="0 0 1000 200" preserveAspectRatio="none" className="w-full h-full overflow-visible">
                 <line x1="0" y1="20" x2="1000" y2="20" stroke="var(--color-danger)" strokeDasharray="4 4" />
                 <text x="900" y="15" className="text-xs fill-danger">Site Limit {portfolio.limitKw} kW</text>
+                {portfolio.blockKw > 0 && (
+                  <>
+                    <line x1="0" y1={180 - (portfolio.blockKw / portfolio.limitKw) * 160} x2="1000" y2={180 - (portfolio.blockKw / portfolio.limitKw) * 160} stroke="var(--color-solar)" strokeDasharray="2 4" />
+                    <text x="900" y={175 - (portfolio.blockKw / portfolio.limitKw) * 160} className="text-xs fill-solar">Tariff block {portfolio.blockKw} kW</text>
+                  </>
+                )}
                 {[6, 10, 14, 18, 22].map((h) => (
                   <text key={h} x={((h - 6) / 16) * 1000} y="195" className="text-[10px] fill-ink-muted">{String(h).padStart(2, '0')}:00</text>
                 ))}

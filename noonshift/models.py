@@ -54,6 +54,8 @@ class ImpactOut(BaseModel):
     kwh: float
     saved_usd: float
     saved_kgco2: float
+    peak_kw: float = 0.0  # highest metered site kW (EV + building) so far today
+    baseline_peak_kw: float = 0.0  # same, had every car charged at full power from plug-in
     note: str = "estimate vs charge-immediately baseline"
 
 
@@ -61,6 +63,22 @@ class StatusOut(BaseModel):
     mode: Mode
     last_solve_at: datetime | None
     connectors_active: int
+    feed_kw: float = 0.0
+    block_kw: float = 0.0
+    sim_time: datetime | None = None
+
+
+class PriceTier(BaseModel):
+    tier: Literal["green", "standard", "boost"]
+    min_slack_hours: float
+    usd_per_kwh: float
+
+
+class PricePreview(BaseModel):
+    """What the driver would pay for a given ready-by, before plugging in. Slack = dwell minus charge time."""
+    slack_hours: float
+    price: Price
+    tiers: list[PriceTier]
 
 
 class FlexHour(BaseModel):

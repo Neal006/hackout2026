@@ -15,7 +15,8 @@ from pydantic import TypeAdapter
 
 from . import db, scheduler, seed
 from .models import (WS_FRAMES, ConnectorMeter, ConnectorPlan, DemoOut, DrEvent, EventMsg, FlexHour, ImpactOut,
-                     LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, SessionIn, SessionOut, SignalHour, StatusOut)
+                     LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, PricePreview, PriceTier, SessionIn, SessionOut,
+                     SignalHour, StatusOut)
 from .sim import SLOT, SPEED, Connector, Sim, load_sessions
 
 S = {}  # site, signal, tariff, sim, plan, plan_at, baseline, impact, mode, ladder, live_lost_at, last_solve_at, dr, clients, next_id
@@ -323,16 +324,47 @@ def site_impact(site_id: str, from_: datetime | None = Query(None, alias="from")
     hi = to or sim.day_end
     ss = [s for s in sim.sessions.values() if lo <= s["arrival"] < hi and s["status"] != "pending"]
     imps = [S["impact"].get(s["id"], {"saved_usd": 0.0, "saved_kgco2": 0.0}) for s in ss]
+    actual, base = site_peaks()
     return ImpactOut(from_=lo, to=hi, sessions=len(ss), kwh=round(sum(s["kwh_delivered"] for s in ss), 2),
                      saved_usd=round(sum(i["saved_usd"] for i in imps), 2),
-                     saved_kgco2=round(sum(i["saved_kgco2"] for i in imps), 2))
+                     saved_kgco2=round(sum(i["saved_kgco2"] for i in imps), 2),
+                     peak_kw=actual, baseline_peak_kw=base)
+
+
+def site_peaks():
+    """Today's metered site peak vs the peak had every car charged at full power from plug-in (the frozen
+    per-session baselines, laid onto absolute slots and summed). Both include building load."""
+    building = S["site"]["building_load_kw"]
+    metered, base = [0.0] * 288, [0.0] * 288
+    for h in S.get("hist", {}).values():
+        k0 = slot_of(h["start"])
+        for i, kw in enumerate(h["kw_min"]):  # per sim-minute since plug-in
+            k = k0 + i // 5
+            if k < 288:
+                metered[k] += kw / 5
+        for i, kw in enumerate(h["baseline"]):
+            if k0 + i < 288:
+                base[k0 + i] += kw
+    feed = S["site"]["feed_kw"]  # baselines were frozen at different times, so their sum can exceed what the feed allows
+    return (round(max(m + b for m, b in zip(metered, building)), 1),
+            round(min(feed, max(m + b for m, b in zip(base, building))), 1))
 
 
 @app.get("/sites/{site_id}/status", response_model=StatusOut)
 def site_status(site_id: str):
     check_site(site_id)
     return StatusOut(mode=S["mode"], last_solve_at=S["last_solve_at"],
-                     connectors_active=sum(c.status == "charging" for c in S["sim"].active()))
+                     connectors_active=sum(c.status == "charging" for c in S["sim"].active()),
+                     feed_kw=S["site"]["feed_kw"], block_kw=S["site"]["block_kw"], sim_time=S["sim"].now)
+
+
+@app.get("/price", response_model=PricePreview)
+def price_preview(departure_at: datetime, kwh_needed: float = 8.0):
+    """Deadline sets the price: preview the tier for a ready-by time before the driver commits."""
+    slack = (departure_at - S["sim"].now).total_seconds() / 3600 - kwh_needed / S["site"]["p_max_kw"]
+    tiers = [PriceTier(tier=t, min_slack_hours=m, usd_per_kwh=scheduler.price(m)["usd_per_kwh"])
+             for t, m in (("green", 4.0), ("standard", 1.0), ("boost", 0.0))]
+    return PricePreview(slack_hours=round(slack, 2), price=scheduler.price(slack), tiers=tiers)
 
 
 @app.get("/grid/signal", response_model=list[SignalHour])

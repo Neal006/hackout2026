@@ -28,6 +28,18 @@ export interface LiveOut {
   saved_kgco2: number;
 }
 
+export interface PriceTier {
+  tier: 'green' | 'standard' | 'boost';
+  min_slack_hours: number;
+  usd_per_kwh: number;
+}
+
+export interface PricePreview {
+  slack_hours: number;
+  price: { tier: 'green' | 'standard' | 'boost'; usd_per_kwh: number };
+  tiers: PriceTier[];
+}
+
 export interface SignalHour {
   hour: number;
   gco2_per_kwh: number;
@@ -91,6 +103,8 @@ export const api = {
     }).then(json<SessionOut>),
   boost: (sid: number) => fetch(`${API}/sessions/${sid}/boost`, { method: 'POST' }).then(json<SessionOut>),
   live: (sid: number) => fetch(`${API}/sessions/${sid}/live`).then(json<LiveOut>),
+  price: (departure_at: string, kwh_needed: number) =>
+    fetch(`${API}/price?departure_at=${encodeURIComponent(departure_at)}&kwh_needed=${kwh_needed}`).then(json<PricePreview>),
   signal: () => fetch(`${API}/grid/signal`).then(json<SignalHour[]>),
 };
 

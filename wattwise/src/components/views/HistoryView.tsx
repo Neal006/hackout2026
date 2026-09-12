@@ -114,6 +114,13 @@ export const HistoryView: React.FC = () => {
                   <span>{session.charger}</span>
                   <span>•</span>
                   <span>Target: {session.targetReached}% reached</span>
+                  {session.targetReached < 95 && (
+                    <span className="text-rose-600 font-semibold">• left {(session.energyKwh * (100 / Math.max(1, session.targetReached)) - session.energyKwh).toFixed(1)} kWh short of stated need</span>
+                  )}
+                  <span>•</span>
+                  <span title="Receipt = metered kWh × grid signal and tariff, vs the same car charged at full power from plug-in. Marginal emissions from WattTime; an estimate, not a certificate.">
+                    estimate · method ⓘ
+                  </span>
                 </div>
               </div>
 

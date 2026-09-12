@@ -54,6 +54,22 @@ export default function AppShell() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto max-h-screen">
+        {/* Fail-safe ladder banner: live -> cached -> tariff -> deadline -> full (from /sites/{id}/status.mode) */}
+        {data.siteDetail.mode !== 'live' && (
+          <div className="bg-solar/10 border-b border-solar/30 text-solar text-xs px-6 py-2 flex items-center gap-3">
+            <span className="w-2 h-2 rounded-full bg-solar animate-pulse"></span>
+            <span className="font-medium uppercase tracking-wider">Fail-safe mode: {data.siteDetail.mode}</span>
+            <span className="text-ink-muted">
+              {data.siteDetail.mode === 'cached' && 'Live carbon signal lost; scheduling on the cached forecast (≤ 6 h).'}
+              {data.siteDetail.mode === 'tariff' && 'No carbon signal; scheduling on the tariff only.'}
+              {data.siteDetail.mode === 'deadline' && 'No signal or tariff; deadlines only.'}
+              {data.siteDetail.mode === 'full' && 'Backend degraded; every charger at full power.'}
+            </span>
+          </div>
+        )}
+        {!data.connected && (
+          <div className="bg-danger/10 border-b border-danger/30 text-danger text-xs px-6 py-2">Not connected to the Noonshift backend (ws /ws). Showing last known state.</div>
+        )}
         <Outlet />
       </main>
     </div>

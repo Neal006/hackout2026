@@ -3,7 +3,7 @@ import confetti from 'canvas-confetti';
 import type { Vehicle, ChargingSchedule, NavTab, OptimizationStep, HourlyDataPoint, ChargingSession } from '../types/wattwise';
 import { INITIAL_VEHICLE } from '../utils/mockData';
 import { api, connectWs, onSimDay, toLocalIso } from '../api/noonshift';
-import type { SessionOut, LiveOut, MeterMsg, PlanMsg, ConnectorMeter, SignalHour } from '../api/noonshift';
+import type { SessionOut, LiveOut, MeterMsg, PlanMsg, ConnectorMeter, SignalHour, PricePreview } from '../api/noonshift';
 
 /*
  * Driver-side state, backed by the Noonshift backend:
@@ -24,6 +24,10 @@ interface WattwiseContextType {
   simTime: string | null;
   connected: boolean;
   sessionId: number | null;
+  gridPercentile: number | null; // "grid is cleaner than X% of today" (LiveOut.grid_percentile)
+  priceTier: { tier: 'green' | 'standard' | 'boost'; usd_per_kwh: number } | null;
+  shortfallKwh: number; // kWh short of the stated need at the last unplug (0 = none)
+  previewPrice: (departureTime: string, targetSoC: number) => Promise<PricePreview | null>;
   currentNav: NavTab;
   setCurrentNav: (tab: NavTab) => void;
   isConnectModalOpen: boolean;
@@ -67,6 +71,7 @@ export const WattwiseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [live, setLive] = useState<LiveOut | null>(null);
   const [signal, setSignal] = useState<SignalHour[]>([]);
   const [history, setHistory] = useState<ChargingSession[]>([]);
+  const [shortfallKwh, setShortfallKwh] = useState(0);
   const [targetSoC, setTargetSoC] = useState(INITIAL_VEHICLE.targetSoC);
   const sessionRef = useRef<SessionOut | null>(null);
   sessionRef.current = session;
@@ -99,6 +104,7 @@ export const WattwiseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               charger: s.connector_id,
             };
             setHistory((h) => (h.some((x) => x.id === row.id) ? h : [row, ...h]));
+            setShortfallKwh(Math.max(0, Number((l.kwh_needed - l.kwh_delivered).toFixed(1)))); // say it plainly on the receipt
           }
           setLive(null);
           setSession(null);
@@ -213,23 +219,32 @@ export const WattwiseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
   };
 
-  const startOptimizationFlow = async (_connectDate: string, _connectTime: string, _departureDate: string, departureTime: string, soc: number) => {
-    setIsConnectModalOpen(false);
-    setIsOptimizing(true);
-    runStepAnimation();
-    setTargetSoC(soc);
+  const departureFor = (departureTime: string) => {
     const now = meter?.sim_time ?? toLocalIso(new Date());
     // ready-by on the sim's day; if the driver picked a time already behind the (fast) sim clock, give them 4 h
     let departure = onSimDay(now, departureTime);
     if (new Date(departure).getTime() <= new Date(now).getTime() + 5 * 60000) {
       departure = toLocalIso(new Date(new Date(now).getTime() + 4 * 3600000));
     }
-    const kwh = Math.max(1, ((soc - START_SOC) / 100) * INITIAL_VEHICLE.batteryCapacityKwh);
+    return departure;
+  };
+  const kwhFor = (soc: number) => Number(Math.max(1, ((soc - START_SOC) / 100) * INITIAL_VEHICLE.batteryCapacityKwh).toFixed(1));
+
+  const previewPrice = (departureTime: string, soc: number) =>
+    api.price(departureFor(departureTime), kwhFor(soc)).catch(() => null);
+
+  const startOptimizationFlow = async (_connectDate: string, _connectTime: string, _departureDate: string, departureTime: string, soc: number) => {
+    setIsConnectModalOpen(false);
+    setIsOptimizing(true);
+    setShortfallKwh(0);
+    runStepAnimation();
+    setTargetSoC(soc);
+    const departure = departureFor(departureTime);
     // take the highest-numbered free connector: the replayed sessions occupy the low ones
     const free = [...(meter?.connectors ?? [])].reverse().find((c) => c.session_id == null)?.connector_id ?? 'c60';
     const t0 = Date.now();
     try {
-      const s = await api.createSession(free, departure, Number(kwh.toFixed(1)));
+      const s = await api.createSession(free, departure, kwhFor(soc));
       await new Promise((r) => setTimeout(r, Math.max(0, 2200 - (Date.now() - t0)))); // let the steps finish
       setOptimizationSteps((prev) => prev.map((x) => ({ ...x, completed: true, active: false })));
       setSession(s);
@@ -261,9 +276,8 @@ export const WattwiseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateTargetSoC = async (soc: number) => {
     setTargetSoC(soc);
     if (!session) return;
-    const kwh = Math.max(1, ((soc - START_SOC) / 100) * INITIAL_VEHICLE.batteryCapacityKwh);
     try {
-      setSession(await api.createSession(session.connector_id, session.plan.ready_by, Number(kwh.toFixed(1)))); // same connector = update
+      setSession(await api.createSession(session.connector_id, session.plan.ready_by, kwhFor(soc))); // same connector = update
     } catch (e) {
       console.warn('update kwh failed', e);
     }
@@ -291,6 +305,10 @@ export const WattwiseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         simTime,
         connected,
         sessionId: session?.session_id ?? null,
+        gridPercentile: live?.grid_percentile ?? null,
+        priceTier: session?.price ?? null,
+        shortfallKwh,
+        previewPrice,
         currentNav,
         setCurrentNav,
         isConnectModalOpen,

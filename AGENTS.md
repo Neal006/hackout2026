@@ -13,8 +13,9 @@ Hackathon entry: "Noonshift" — a CPO-side, deadline-based EV charging schedule
 ## Current State & Focus
 - Tirth's lane on main: api.py (7 endpoints, /ws, ladder, /demo/*), sim.py (1-min clock, taper), ocpp_gateway.py, db.py, seed.py, docker, hosting.
 - Neal's lane merged (PRs #2-#4): real `scheduler.py`, impact/price, receipt fix in api.py, 53 tests, prove.py, fetch_data.py. `data/` is real on both sides: WattTime MOER 2026-04-14 + 36 ACN Caltech sessions (2019-04-09 re-dated). prove.py: CO2 -69.3%, $ -3.3%, peak -1.0%, 0 fallbacks; July -64.5%, January -1.8%.
-- Both front-ends are wired to the backend (branch `feat/e2e-flow`, merges Nandini): driver plug-in/Boost in WattWise shows up live on the ops Gantt/Sessions/Alerts; ops demo buttons hit `/demo/*`. Verified in-browser 2026-09-13. Remaining: narrative copy in WattWise views (ChargeView/ChargingTimeline/SmartExplanationCard/ProfileView/OptimalWindowBanner) still tells the home-overnight story with fixed numbers; ImpactView has no baseline absolutes (API returns deltas only); admin "pause connector" is a no-op by design.
-- Next: pitch. Slide must say "2019 sessions, 2026 grid signal" and quote the CO2 range.
+- Both front-ends are wired to the backend (branch `feat/e2e-flow`, PR #7, merges Nandini): driver plug-in/Boost in WattWise shows up live on the ops Gantt/Sessions/Alerts; ops demo buttons hit `/demo/*`; fail-safe banner from `status.mode`; price tiers previewed at the ready-by choice (`GET /price`); "peak avoided (est.)" from `ImpactOut.peak_kw/baseline_peak_kw`. `scripts/smoke.py` = browser-free clean-machine gate (prints SMOKE OK); `scripts/dev.ps1` starts all three. Pitch material in `pitch/` (deck, 4-min demo script, hard questions), all sourced from the proposal + prove.py.
+- team-plan.md audit, not done and why: "last 5 visits" line (no driver identity in the backend, sessions are per connector); 400 px mobile check and backup video (need a browser); cost-savings slide numbers ($20k vs $13k, 28 %/9 %) are in the plan but nowhere in the proposal → left as a TODO in `pitch/deck.md`, do not quote; competitor table re-verification (needs web); Docker run (no Docker on this machine). WattWise narrative copy (ChargeView/ChargingTimeline/SmartExplanationCard/ProfileView/OptimalWindowBanner) still tells the home-overnight story with fixed strings; numbers are live, prose isn't.
+- Next: pitch rehearsal. Slide must say "2019 sessions, 2026 grid signal" and quote the CO2 range.
 
 ## Architecture
 Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (deadline, kWh) + site meters
@@ -32,6 +33,8 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - `wattwise/src/context/WattwiseContext.tsx` — driver state: `POST /sessions` on the highest free connector (replayed sessions use c01–c36), `/live` polled every 2 s for the receipt, meter/plan frames for kW/kWh/window; unplug/day_reset moves the session to History.
 - `noonshift/ocpp_gateway.py`, `db.py`, `seed.py`, `test_loop.py` — Tirth's; unchanged by Neal's lane.
 - `scripts/prove.py` — two real-loop replays (charge-now vs Noonshift), slide-1 table, gate exit code.
+- `scripts/smoke.py` — e2e without a browser: driver REST (`/price`, `/sessions`, `/boost`, `/live`) + `/ws` as the ops app sees it + all four `/demo/*` + ladder drop/restore; plugs 2 extra cars before the demo beats so early-unplug/boost always have a target.
+- `pitch/` — `deck.md` (slide list, all sourced), `demo-script.md` (4 min, 7 beats, what the audience sees per beat, failure modes), `hard-questions.md` (answers tied to code + tests).
 - `scripts/fetch_data.py` — WattTime / ACN-Data / CAISO fallback → `data/*.json`.
 - `tests/test_scheduler.py`, `test_impact.py`, `test_perf.py`, `test_day.py` (full day + demo scenarios), `tests/fixtures/baseline_1405.json`.
 - `neal-plan.md` — Neal's lane: status vs gates, LP deviations and why, edge-case→test matrix, open items.
@@ -73,6 +76,7 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - 2026-09-12 — Session data = ACN 2019-04-09 re-dated onto the 2026 signal day; kwh_needed = delivered energy, stated departure = the driver's own input (early leavers kept).
 
 ## Changelog
+2026-09-13 | team-plan.md integration pass: price preview, peak-avoided, fail-safe banner, smoke gate, pitch/ | api.py, models.py, web/, wattwise/, scripts/smoke.py, scripts/dev.ps1, pitch/, README | Baseline peak = sum of frozen per-session baselines clipped at the feed (label "est."); cost-savings slide left TODO for lack of a source
 2026-09-13 | Wire WattWise (driver) + Nandini ops dashboard to the backend; merge Nandini | web/src/{context,pages,components}, wattwise/src/{api,context,components,utils}, api.py, models.py, docker-compose.yml, web/nginx.conf | No WS frame changes, one additive endpoint; keep side effects out of React state updaters (StrictMode runs them twice)
 2026-09-12 | Same-day 2019 check | neal-plan.md, AGENTS.md | 2019 sessions x 2019 CAISO average: CO2 -54.2%; story holds without mixing years
 2026-09-12 | Real ACN sessions + accounts | data/sessions.json, scripts/fetch_data.py, neal-plan.md | kwh_needed = delivered not requested; early leavers kept; CO2 -69% / $ -3% on the real day

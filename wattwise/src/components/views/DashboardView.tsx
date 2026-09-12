@@ -17,7 +17,8 @@ import { EnergyConditionGraph } from '../schedule/EnergyConditionGraph';
 import { formatCurrency, formatCo2, formatKwh } from '../../utils/formatters';
 
 export const DashboardView: React.FC = () => {
-  const { vehicle, schedule, openConnectModal } = useWattwise();
+  const { vehicle, schedule, openConnectModal, gridPercentile, priceTier, shortfallKwh } = useWattwise();
+  const pctOff = schedule.normalCost > 0 ? Math.round((100 * schedule.savings) / schedule.normalCost) : 0;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -100,7 +101,7 @@ export const DashboardView: React.FC = () => {
           value={formatCurrency(schedule.smartCost)}
           subtext={`Normal rate: ${formatCurrency(schedule.normalCost)}`}
           icon={<IndianRupee className="w-4 h-4" />}
-          badge="-25%"
+          badge={`${pctOff}% off`}
           badgeType="positive"
         />
 
@@ -109,7 +110,7 @@ export const DashboardView: React.FC = () => {
           value={formatCurrency(schedule.savings)}
           subtext="Saved on this session"
           icon={<Zap className="w-4 h-4" />}
-          badge="Max Savings"
+          badge={priceTier ? `${priceTier.tier} rate` : "estimate"}
           badgeType="accent"
           highlight={true}
         />
@@ -117,18 +118,18 @@ export const DashboardView: React.FC = () => {
         <StatCard
           label="CO₂ Avoided"
           value={formatCo2(schedule.co2AvoidedKg)}
-          subtext="vs charging immediately"
+          subtext={shortfallKwh > 0 ? `Last session ended ${shortfallKwh} kWh short of your stated need` : "vs charging at plug-in (estimate)"}
           icon={<Leaf className="w-4 h-4" />}
-          badge="78% Clean"
+          badge={gridPercentile != null ? `cleaner than ${Math.round(gridPercentile)}% of today` : "estimate"}
           badgeType="positive"
         />
 
         <StatCard
           label="Energy Used"
           value={formatKwh(schedule.energyNeededKwh)}
-          subtext="To reach 90% target"
+          subtext={`To reach ${vehicle.targetSoC}% target`}
           icon={<BatteryCharging className="w-4 h-4" />}
-          badge="11 kW L2"
+          badge="7 kW L2"
           badgeType="neutral"
         />
       </div>
