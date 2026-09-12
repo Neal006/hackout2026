@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  
+  --color-canvas: #F7F7F5;
+  --color-surface: #FFFFFF;
+  --color-obsidian: #171717;
+  --color-subtle-border: #E5E5E2;
+  --color-electric: #D4F634;
+  --color-electric-dark: #A9CA12;
+  --color-electric-muted: rgba(212, 246, 52, 0.15);
+}
+
+:root {
+  --bg-primary: #F7F7F5;
+  --text-primary: #171717;
+}
+
+body {
+  background-color: #F7F7F5;
+  color: #171717;
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D4D4D0;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A3A39E;
+}
+
+/* Animations */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(212, 246, 52, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(212, 246, 52, 0.85);
+  }
+}
+
+@keyframes energyFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-energy-flow {
+  background-size: 200% 200%;
+  animation: energyFlow 3s ease infinite;
+}
+
+/* Glass & Card effects */
+.glass-card {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(23, 23, 23, 0.08);
+}
