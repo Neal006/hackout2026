@@ -136,7 +136,31 @@ def solve_lp(cars, site, signal, tariff, now):
     x = res.x
     plan = {car["connector_id"]: np.maximum(x[i * H:(i + 1) * H], 0.0) for i, car in enumerate(cars)}
     info["shortfall_kwh"] = {car["connector_id"]: round(float(x[S(i)]), 4) for i, car in enumerate(cars)}
+    _enforce_min_kw(plan, cars, avail, now)
     return {cid: [round(float(v), 3) for v in p] for cid, p in plan.items()}, info
+
+
+def _enforce_min_kw(plan, cars, avail, now):
+    """Post-step, in place. EVs cannot charge below 6 A, so any allocation in (0, MIN_KW) rounds up to MIN_KW
+    (some EVs never resume after a pause). Rounding can push a slot over the site limit; trim the cars with the
+    most slack first, and a trimmed car drops to 0, never to a value below MIN_KW."""
+    floor = {c["connector_id"]: min(MIN_KW, float(c["p_max_kw"])) for c in cars}
+    for cid, p in plan.items():
+        p[(p > 1e-9) & (p < floor[cid])] = floor[cid]
+    slack_order = sorted(cars, key=lambda c: -_slots_until(c["departure"], now))
+    for t in range(HORIZON):
+        excess = sum(p[t] for p in plan.values()) - avail[t]
+        for c in slack_order:
+            if excess <= 1e-9:
+                break
+            p, cid = plan[c["connector_id"]], c["connector_id"]
+            if p[t] <= 0:
+                continue
+            cut = min(p[t], excess)
+            keep = p[t] - cut
+            if 0 < keep < floor[cid]:
+                cut, keep = p[t], 0.0
+            p[t], excess = keep, excess - cut
 
 
 def solve(cars, site, signal, tariff, now) -> dict[str, list[float]]:

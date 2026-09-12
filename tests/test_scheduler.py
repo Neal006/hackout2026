@@ -35,14 +35,20 @@ def site_kw(plan, t):
     return sum(p[t] for p in plan.values())
 
 
+def met(plan, cid, needed, upto=H):
+    """Planned energy covers the need; the 6 A floor may add at most one MIN_KW slot on top."""
+    got = kwh(plan, cid, upto)
+    return needed - 1e-6 <= got <= needed + S.MIN_KW * SLOT_H + 1e-6
+
+
 # ---- the three asserts from team-plan.md ----
 def test_feasible_deadlines_are_met_before_the_30_min_buffer():
     cars = [car("a", 6, 20), car("b", 4, 15), car("c", 8, 30)]
     plan = solve(cars, site(), signal(), tariff(), NOW)
     for c in cars:
         d = int(c["departure"].timestamp() - NOW.timestamp()) // 300
-        assert kwh(plan, c["connector_id"]) == pytest.approx(c["kwh_needed"], abs=1e-6)
-        assert kwh(plan, c["connector_id"], d - S.SPRINT_SLOTS) == pytest.approx(c["kwh_needed"], abs=1e-6), "done before buffer"
+        assert met(plan, c["connector_id"], c["kwh_needed"])
+        assert met(plan, c["connector_id"], c["kwh_needed"], d - S.SPRINT_SLOTS), "done before buffer"
         assert all(v == 0 for v in plan[c["connector_id"]][d:]), "nothing after the deadline"
 
 
@@ -83,7 +89,7 @@ def test_zero_p_max_gets_zero_plan_and_full_shortfall():
 
 def test_passed_deadline_charges_now():
     plan = solve([car("a", -1, 10)], site(), signal(), tariff(), NOW)
-    assert plan["a"][0] == 7.0 and kwh(plan, "a") == pytest.approx(10.0, abs=1e-6)
+    assert plan["a"][0] == 7.0 and met(plan, "a", 10.0)
 
 
 def test_boost_charges_now_even_when_later_is_cheaper():
@@ -104,7 +110,7 @@ def test_plan_moves_energy_into_cheap_clean_slots():
     moer = [600.0] * 48 + [100.0] * (H - 48)
     plan = solve([car("a", 8, 14)], site(), signal(moer), tariff(price), NOW)
     assert kwh(plan, "a", 48) <= S.ALPHA * 14 * 48 / (96 - S.SPRINT_SLOTS) + 1e-6, "only the progress floor lands in the dear window"
-    assert kwh(plan, "a") == pytest.approx(14.0, abs=1e-6)
+    assert met(plan, "a", 14.0)
 
 
 def test_progress_floor_protects_an_early_leaver():
@@ -120,12 +126,12 @@ def test_tariff_only_and_deadline_only_rungs_still_meet_deadlines():
     for sig, tar in ((signal(), tariff()), ({"moer": [], "kind": None}, tariff()), ({"moer": [], "kind": None}, tariff([]))):
         plan = solve(cars, site(), sig, tar, NOW)
         for c in cars:
-            assert kwh(plan, c["connector_id"]) == pytest.approx(c["kwh_needed"], abs=1e-6)
+            assert met(plan, c["connector_id"], c["kwh_needed"])
 
 
-def test_never_over_delivers():
+def test_never_plans_more_than_needed_plus_one_min_kw_slot():
     plan = solve([car("a", 8, 3.3)], site(), signal(), tariff(), NOW)
-    assert kwh(plan, "a") == pytest.approx(3.3, abs=1e-6)
+    assert met(plan, "a", 3.3)
 
 
 def test_deterministic():
@@ -145,4 +151,31 @@ def test_short_and_nan_signal_arrays_are_tolerated():
     st = site()
     st["building_load_kw"] = [20.0] * 5
     plan = solve([car("a", 6, 20)], st, sig, tar, NOW)
-    assert kwh(plan, "a") == pytest.approx(20.0, abs=1e-6)
+    assert met(plan, "a", 20.0)
+
+
+# ---- 6 A floor post-step ----
+def no_sub_min(plan):
+    return all(v == 0 or v >= S.MIN_KW - 1e-9 for p in plan.values() for v in p)
+
+
+def test_tiny_allocation_rounds_up_to_min_kw_never_pauses():
+    plan = solve([car("a", 2, 0.05)], site(), signal(), tariff(), NOW)  # 0.05 kWh = 0.6 kW for one slot
+    assert no_sub_min(plan) and max(plan["a"]) == S.MIN_KW and sum(v > 0 for v in plan["a"]) == 1
+
+
+def test_rounding_up_still_respects_site_limit():
+    st = site(feed=10, block=100, building=0)
+    cars = [car(f"c{i}", 1, 0.05) for i in range(20)]  # 20 x 1.4 kW after rounding = 28 kW > 10 kW feed
+    plan = solve(cars, st, signal(), tariff(), NOW)
+    assert no_sub_min(plan)
+    for t in range(H):
+        assert site_kw(plan, t) <= 10 + 1e-6
+
+
+def test_trim_drops_a_car_to_zero_not_below_min_kw():
+    cars = [dict(car(f"c{i}", 8, 14), departure=NOW) for i in range(40)]  # ASAP baseline: 280 kW wanted, 130 kW feed
+    plan = solve(cars, site(), signal(), tariff(), NOW)
+    assert no_sub_min(plan)
+    for t in range(H):
+        assert site_kw(plan, t) <= 130 + 1e-6
