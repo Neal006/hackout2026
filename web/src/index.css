@@ -10,10 +10,10 @@
   --color-border: #E5E7EB;
   --color-ink: #111827;
   --color-ink-muted: #6B7280;
-  --color-solar: #F59E0B;
-  --color-grid-blue: #3B82F6;
-  --color-danger: #EF4444;
-  --color-saved: #10B981;
+  --color-solar: #008080;
+  --color-grid-blue: #008080;
+  --color-danger: #008080;
+  --color-saved: #008080;
 }
 
 body {

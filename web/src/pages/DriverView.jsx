@@ -114,7 +114,7 @@ export default function DriverView() {
               </div>
               <div className="flex justify-between">
                 <span className="text-ink-muted">Charging</span>
-                <span className="font-medium text-ink">11:10–12:20</span>
+                <span className="font-medium text-ink">11:10-12:20</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-ink-muted">Energy</span>
@@ -268,11 +268,11 @@ export default function DriverView() {
               </div>
               <div className="flex justify-between border-b border-border pb-2">
                 <span className="text-ink-muted">Charge Schedule</span>
-                <span className="mono">11:10–12:20</span>
+                <span className="mono">11:10-12:20</span>
               </div>
               <div className="flex justify-between border-b border-border pb-2">
                 <span className="text-ink-muted">Charge-Immediately Baseline</span>
-                <span className="mono">08:30–09:40</span>
+                <span className="mono">08:30-09:40</span>
               </div>
               <div className="flex justify-between border-b border-border pb-2">
                 <span className="text-ink-muted">Tariff Estimate</span>

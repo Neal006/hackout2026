@@ -16,7 +16,10 @@ export function GlobalStateProvider({ children }) {
       const energyReq = 8.0 + Math.floor(Math.random() * 10);
       const delivered = energyReq * (actualWidth / planWidth);
       const driver = ['Priya', 'Rahul', 'Arjun', 'Neha', 'Tom', 'Sofia'][Math.floor(Math.random() * 6)];
-      return { id, driver, deadlineMins, hasBoost, startPct, planWidth, actualWidth, status, energyReq, delivered, power: status === 'Charging' ? 6.8 : 0 };
+      const carModels = ['Tesla Model 3', 'Hyundai Ioniq 5', 'Ford Mustang Mach-E', 'Nissan Leaf', 'Chevy Bolt'];
+      const carModel = carModels[Math.floor(Math.random() * carModels.length)];
+      const licensePlate = `ABC-${1000 + Math.floor(Math.random() * 9000)}`;
+      return { id, driver, carModel, licensePlate, deadlineMins, hasBoost, startPct, planWidth, actualWidth, status, energyReq, delivered, power: status === 'Charging' ? 6.8 : 0 };
     });
 
     // Mock Sites Table
@@ -111,7 +114,7 @@ export function GlobalStateProvider({ children }) {
       } else if (endpoint === 'demo_late_surge') {
         for (let i = 0; i < 20; i++) {
           connectors.push({
-            id: `CN-L${i}`, driver: 'Guest', deadlineMins: Math.floor(Math.random() * 120) + 10,
+            id: `CN-L${i}-${Date.now()}`, driver: 'Guest', carModel: 'Unknown', licensePlate: 'N/A', deadlineMins: Math.floor(Math.random() * 120) + 10,
             hasBoost: false, startPct: 80, planWidth: 10, actualWidth: 5, status: 'Waiting', energyReq: 10, delivered: 2, power: 0
           });
         }

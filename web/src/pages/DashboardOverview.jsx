@@ -11,7 +11,7 @@ export default function DashboardOverview() {
       <header className="mb-8 flex justify-between items-end border-b border-border pb-4">
         <div>
           <h1 className="text-2xl font-semibold text-ink">Operations Overview</h1>
-          <p className="text-sm text-ink-muted mt-1">Today — September 12, 2026</p>
+          <p className="text-sm text-ink-muted mt-1">Today - September 12, 2026</p>
         </div>
         <select className="border border-border bg-surface text-sm p-2 outline-none">
           <option>All sites</option>
@@ -50,7 +50,7 @@ export default function DashboardOverview() {
 
       {/* Live Site Power Section */}
       <section className="mb-12">
-        <h2 className="text-lg font-medium text-ink mb-4">Live site power — Network Aggregate</h2>
+        <h2 className="text-lg font-medium text-ink mb-4">Live site power - Network Aggregate</h2>
         <div className="border border-border bg-surface p-6 flex flex-col gap-6">
           
           <div className="flex gap-12 border-b border-border pb-4">
@@ -68,19 +68,21 @@ export default function DashboardOverview() {
             </div>
           </div>
 
-          <div className="relative w-full h-48">
-            <svg viewBox="0 0 1000 200" preserveAspectRatio="none" className="w-full h-full overflow-visible">
-              <line x1="0" y1="20" x2="1000" y2="20" stroke="var(--color-danger)" strokeDasharray="4 4" />
-              <text x="1005" y="24" className="text-xs fill-danger">Site Limit</text>
-              <text x="0" y="195" className="text-[10px] fill-ink-muted">08:00</text>
-              <text x="250" y="195" className="text-[10px] fill-ink-muted">10:00</text>
-              <text x="500" y="195" className="text-[10px] fill-ink-muted">12:00</text>
-              <text x="750" y="195" className="text-[10px] fill-ink-muted">14:00</text>
-              <text x="1000" y="195" className="text-[10px] fill-ink-muted">16:00</text>
-
-              <polyline fill="none" stroke="var(--color-ink-muted)" strokeWidth="1" points="0,150 250,130 500,140 750,120 1000,130" />
-              <polyline fill="none" stroke="var(--color-solar)" strokeWidth="2" points="0,130 250,80 500,40 750,90 1000,100" />
-            </svg>
+          <div className="w-full overflow-x-auto">
+            <div className="relative h-48 min-w-[800px]">
+              <svg viewBox="0 0 1000 200" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+                <line x1="0" y1="20" x2="1000" y2="20" stroke="var(--color-danger)" strokeDasharray="4 4" />
+                <text x="940" y="15" className="text-xs fill-danger">Site Limit</text>
+                <text x="0" y="195" className="text-[10px] fill-ink-muted">08:00</text>
+                <text x="250" y="195" className="text-[10px] fill-ink-muted">10:00</text>
+                <text x="500" y="195" className="text-[10px] fill-ink-muted">12:00</text>
+                <text x="750" y="195" className="text-[10px] fill-ink-muted">14:00</text>
+                <text x="1000" y="195" className="text-[10px] fill-ink-muted">16:00</text>
+  
+                <polyline fill="none" stroke="var(--color-ink-muted)" strokeWidth="1" points="0,150 250,130 500,140 750,120 1000,130" />
+                <polyline fill="none" stroke="var(--color-solar)" strokeWidth="2" points="0,130 250,80 500,40 750,90 1000,100" />
+              </svg>
+            </div>
           </div>
           <div className="flex gap-4 text-xs text-ink-muted mt-2 justify-center">
             <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-solar"></div> EV Load</div>

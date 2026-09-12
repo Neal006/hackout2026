@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useGlobalState } from '../context/GlobalStateContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function OpsDashboard() {
   const { data, triggerEvent } = useGlobalState();
   const { siteDetail: site } = data;
+  const navigate = useNavigate();
   
   const [activeTab, setActiveTab] = useState('Live charging');
-  const [selectedConnector, setSelectedConnector] = useState(null);
+  const [selectedConnectorId, setSelectedConnectorId] = useState(null);
+  const selectedConnector = selectedConnectorId ? site.connectors.find(c => c.id === selectedConnectorId) : null;
 
   if (!site) return null;
 
@@ -84,7 +87,7 @@ export default function OpsDashboard() {
                   {site.connectors.map(c => (
                     <div 
                       key={c.id} 
-                      onClick={() => setSelectedConnector(c)}
+                      onClick={() => setSelectedConnectorId(c.id)}
                       className={`flex items-center gap-4 group cursor-pointer p-1 -mx-1 rounded transition-colors ${selectedConnector?.id === c.id ? 'bg-bg' : 'hover:bg-bg/50'}`}
                     >
                       <span className="mono text-xs w-12 shrink-0 text-ink-muted group-hover:text-ink">{c.id}</span>
@@ -106,7 +109,7 @@ export default function OpsDashboard() {
               <aside className="w-80 shrink-0 bg-surface flex flex-col overflow-y-auto">
                 <div className="p-6 border-b border-border flex justify-between items-center sticky top-0 bg-surface z-10">
                   <h2 className="text-xl font-semibold">{selectedConnector.id}</h2>
-                  <button onClick={() => setSelectedConnector(null)} className="text-ink-muted hover:text-ink text-sm">Close</button>
+                  <button onClick={() => setSelectedConnectorId(null)} className="text-ink-muted hover:text-ink text-sm">Close</button>
                 </div>
                 
                 <div className="p-6 flex flex-col gap-6">
@@ -117,8 +120,16 @@ export default function OpsDashboard() {
 
                   <div className="flex flex-col gap-3 text-sm">
                     <div className="flex justify-between border-b border-border pb-2">
-                      <span className="text-ink-muted">Driver</span>
+                      <span className="text-ink-muted">Driver Name</span>
                       <span className="font-medium">{selectedConnector.driver}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-border pb-2">
+                      <span className="text-ink-muted">Car Model</span>
+                      <span className="font-medium">{selectedConnector.carModel}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-border pb-2">
+                      <span className="text-ink-muted">License Plate</span>
+                      <span className="mono">{selectedConnector.licensePlate}</span>
                     </div>
                     <div className="flex justify-between border-b border-border pb-2">
                       <span className="text-ink-muted">Energy required</span>
@@ -134,7 +145,7 @@ export default function OpsDashboard() {
                     </div>
                     <div className="flex justify-between border-b border-border pb-2">
                       <span className="text-ink-muted">Scheduled</span>
-                      <span className="mono">11:10–12:20</span>
+                      <span className="mono">11:10-12:20</span>
                     </div>
                     <div className="flex justify-between border-b border-border pb-2">
                       <span className="text-ink-muted">Ready by</span>
@@ -147,16 +158,17 @@ export default function OpsDashboard() {
                   </div>
 
                   <div className="flex flex-col gap-3 mt-4">
-                    <button className="w-full text-xs uppercase tracking-wider border border-border py-2 hover:bg-bg transition-colors">View session</button>
-                    <button className="w-full text-xs uppercase tracking-wider border border-border py-2 hover:bg-bg transition-colors">Edit schedule</button>
+                    <button onClick={() => navigate('/ops/overview')} className="w-full text-xs uppercase tracking-wider border border-border py-2 hover:bg-bg transition-colors">Dashboard (Overview)</button>
+                    <button onClick={() => navigate('/ops/sessions')} className="w-full text-xs uppercase tracking-wider border border-border py-2 hover:bg-bg transition-colors">View session</button>
+                    <button onClick={() => navigate('/ops/schedules')} className="w-full text-xs uppercase tracking-wider border border-border py-2 hover:bg-bg transition-colors">Edit schedule</button>
                     <button 
-                      onClick={() => { triggerEvent('prioritize_connector', selectedConnector.id); setSelectedConnector(null); }}
+                      onClick={() => triggerEvent('prioritize_connector', selectedConnector.id)}
                       className="w-full text-xs uppercase tracking-wider bg-ink text-surface py-2 hover:opacity-90 transition-opacity"
                     >
                       Prioritize (Boost)
                     </button>
                     <button 
-                      onClick={() => { triggerEvent('pause_connector', selectedConnector.id); setSelectedConnector(null); }}
+                      onClick={() => triggerEvent('pause_connector', selectedConnector.id)}
                       className="w-full text-xs uppercase tracking-wider border border-danger text-danger py-2 hover:bg-danger/5 transition-colors"
                     >
                       Pause
@@ -167,8 +179,10 @@ export default function OpsDashboard() {
             )}
           </div>
         ) : (
-          <div className="p-8 text-ink-muted text-sm">
-            Select "Live charging" tab to view the Gantt chart.
+          <div className="p-8 flex flex-col justify-center items-center h-full w-full">
+            <h2 className="text-2xl font-medium text-ink mb-2">{activeTab}</h2>
+            <p className="text-ink-muted text-sm mb-6">This section displays the {activeTab.toLowerCase()} data for the selected site.</p>
+            <button onClick={() => setActiveTab('Live charging')} className="px-4 py-2 border border-border text-ink hover:bg-bg transition-colors text-sm">Return to Live charging</button>
           </div>
         )}
       </main>

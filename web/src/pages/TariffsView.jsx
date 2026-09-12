@@ -40,7 +40,7 @@ export default function TariffsView() {
               <div className="w-2 h-2 rounded-full bg-saved"></div>
               Super Off-Peak
             </div>
-            <div className="col-span-1 text-center mono text-ink-muted">09:00 – 14:00</div>
+            <div className="col-span-1 text-center mono text-ink-muted">09:00 - 14:00</div>
             <div className="col-span-1 text-right mono">$0.18</div>
           </div>
           
@@ -49,7 +49,7 @@ export default function TariffsView() {
               <div className="w-2 h-2 rounded-full bg-ink-muted"></div>
               Off-Peak
             </div>
-            <div className="col-span-1 text-center mono text-ink-muted">00:00 – 09:00<br/>14:00 – 16:00<br/>21:00 – 00:00</div>
+            <div className="col-span-1 text-center mono text-ink-muted">00:00 - 09:00<br/>14:00 - 16:00<br/>21:00 - 00:00</div>
             <div className="col-span-1 text-right mono">$0.24</div>
           </div>
           
@@ -58,7 +58,7 @@ export default function TariffsView() {
               <div className="w-2 h-2 rounded-full bg-danger"></div>
               Peak
             </div>
-            <div className="col-span-1 text-center mono text-ink-muted">16:00 – 21:00</div>
+            <div className="col-span-1 text-center mono text-ink-muted">16:00 - 21:00</div>
             <div className="col-span-1 text-right mono text-danger">$0.45</div>
           </div>
         </div>
