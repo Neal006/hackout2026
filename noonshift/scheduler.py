@@ -9,7 +9,8 @@ Conventions the caller (api.py) relies on:
 The LP (proposal 4.4). p[i,t] = kW for car i in slot t, s[i] = shortfall kWh, over = site kW above the tariff block.
   minimise   sum p * SLOT_H * (price[t] + W_CARBON * moer[t] / 1000)  +  M_SHORT * s[i]  +  overage_usd_per_kw * over
   1. energy    sum_{t < deadline} p * SLOT_H + s[i] >= e_rem[i]                (elastic: the LP is never infeasible)
-  2. floor     energy by each hourly checkpoint >= ALPHA * frac * (e_rem[i] - s[i])   (fairness + early-unplug safety)
+  2. floor     delivered + planned energy by each 30-min checkpoint since arrival >= ALPHA * pro-rata * (need - s[i])
+               (fairness + early-unplug safety; anchored to arrival so a rolling re-solve cannot defer it)
   3. sprint    the last 30 min before the deadline carry a BUFFER_COST surcharge, so a feasible car finishes early and
                the buffer is spent only by cars that would otherwise fall short (and by re-solves after a bad forecast)
   4. charger   0 <= p <= p_max_kw
@@ -36,11 +37,14 @@ SLOT_H = 5 / 60
 MIN_KW = 1.4        # 6 A x 240 V, the IEC 61851 floor: allocations in (0, MIN_KW) round up, never pause
 W_CARBON = 0.05     # $/kg CO2 (= $50/t) trading carbon against tariff; prove.py sweeps this
 ALPHA = 0.5         # progress floor: every car holds >= half its pro-rata energy at every checkpoint
-FLOOR_EVERY = 12    # checkpoint hourly; 30-min checkpoints made the plan sip a slot every half hour, choppy on the Gantt
+FLOOR_EVERY = 6     # checkpoint every 30 min. Hourly looked smoother on the Gantt but let a car sit at 0 kWh for 59 min
 SPRINT_SLOTS = 6    # last 30 min before the deadline are a buffer: used only when the car would otherwise fall short
 BUFFER_COST = 1.0   # $/kWh surcharge on buffer slots, >> any tariff spread and << M_SHORT
 M_SHORT = 10.0      # $/kWh shortfall penalty, >> any per-kWh cost, so shortfall is the last resort
+M_FLOOR = 1.0       # $/kWh for missing a progress-floor checkpoint: > any slot cost, << M_SHORT
 EPS = 1e-7          # earliest-first tie-break per slot, << any real cost difference
+ASAP_EPS = 1e-3     # earliest-first cost for ASAP cars, which have no other cost: 1e-7 alone left HiGHS "Unknown"
+E_MIN = 0.05        # kWh; a car this close to full just finishes at MIN_KW in the first slot, no LP juggling
 DAYS_PER_MONTH = 30 # tariff block overage is billed monthly; one day carries 1/30 of it
 
 
@@ -80,9 +84,10 @@ def solve_lp(cars, site, signal, tariff, now):
     S = lambda i: n * H + i          # shortfall column of car i
     OVER = n * H + n
     Z = OVER + 1                     # worst shortfall fraction over all cars (min-max fairness)
-    nv = Z + 1
+    F = lambda i: Z + 1 + i          # progress-floor slack of car i
+    nv = Z + 1 + n
     c, hi = np.zeros(nv), np.zeros(nv)
-    e_rems = []
+    e_rems, finish = [], []
     rows, cols, vals, b = [], [], [], []
     k = 0
 
@@ -94,7 +99,8 @@ def solve_lp(cars, site, signal, tariff, now):
 
     for i, car in enumerate(cars):
         cid, base = car["connector_id"], i * H
-        e_rem = max(0.0, float(car["kwh_needed"]) - float(car.get("kwh_delivered", 0.0)))
+        need, done = float(car["kwh_needed"]), float(car.get("kwh_delivered", 0.0))
+        e_rem = max(0.0, need - done)
         p_max = max(0.0, float(car["p_max_kw"]))
         d = _slots_until(car["departure"], now)
         asap = d == 0 or bool(car.get("boost"))
@@ -103,9 +109,12 @@ def solve_lp(cars, site, signal, tariff, now):
             d = H if d == 0 else d
         if e_rem <= 0 or p_max <= 0:
             continue
+        if e_rem < E_MIN:
+            finish.append(i)
+            continue
         end = d if asap or d <= SPRINT_SLOTS else d - SPRINT_SLOTS     # rule 3: 30-min buffer
         for t in range(d):
-            c[base + t] = EPS * t if asap else slot_cost[t] + (BUFFER_COST * SLOT_H if t >= end else 0.0)
+            c[base + t] = ASAP_EPS * t if asap else slot_cost[t] + (BUFFER_COST * SLOT_H if t >= end else 0.0)
             hi[base + t] = p_max
         c[S(i)], hi[S(i)] = M_SHORT, e_rem
         e_rems.append(e_rem)
@@ -113,9 +122,19 @@ def solve_lp(cars, site, signal, tariff, now):
         row([(base + t, SLOT_H) for t in range(d)], e_rem)                              # cap
         row([(S(i), 1.0), (Z, -e_rem)], 0.0)                                            # s[i] / e_rem[i] <= z
         if not asap:
-            for t in range(FLOOR_EVERY - 1, end, FLOOR_EVERY):                         # rule 2 (elastic)
-                frac = (t + 1) / end
-                row([(base + tt, -SLOT_H) for tt in range(t + 1)] + [(S(i), -ALPHA * frac)], -ALPHA * frac * e_rem)
+            # rule 2 (elastic), anchored to arrival: checkpoints every FLOOR_EVERY slots since plug-in, target
+            # ALPHA * pro-rata of the whole need, counting energy already delivered. Anchoring to `now` instead
+            # lets a 5-min rolling re-solve defer the floor forever (the first checkpoint is always 30 min away).
+            elapsed = max(0, int((now - car.get("arrival", now)).total_seconds() // 300))
+            L = elapsed + end
+            for j in range(FLOOR_EVERY, L + 1, FLOOR_EVERY):
+                t = j - elapsed - 1
+                if t < 0 or t >= end:
+                    continue
+                frac = j / L
+                row([(base + tt, -SLOT_H) for tt in range(t + 1)] + [(S(i), -ALPHA * frac), (F(i), -1.0)],
+                    done - ALPHA * frac * need)
+            c[F(i)], hi[F(i)] = M_FLOOR, need
     pure_asap = len(info["asap"]) == n
     for t in range(H):
         row([(i * H + t, 1.0) for i in range(n)], avail[t])                            # rule 5
@@ -135,9 +154,11 @@ def solve_lp(cars, site, signal, tariff, now):
     info["status"] = "optimal"
     x = res.x
     plan = {car["connector_id"]: np.maximum(x[i * H:(i + 1) * H], 0.0) for i, car in enumerate(cars)}
+    for i in finish:
+        plan[cars[i]["connector_id"]][0] = min(MIN_KW, float(cars[i]["p_max_kw"]))
     info["shortfall_kwh"] = {car["connector_id"]: round(float(x[S(i)]), 4) for i, car in enumerate(cars)}
     _enforce_min_kw(plan, cars, avail, now)
-    return {cid: [round(float(v), 3) for v in p] for cid, p in plan.items()}, info
+    return {cid: [math.floor(float(v) * 1000 + 1e-6) / 1000 for v in p] for cid, p in plan.items()}, info  # round down: never over the limit
 
 
 def _enforce_min_kw(plan, cars, avail, now):

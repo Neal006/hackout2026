@@ -121,6 +121,32 @@ def test_progress_floor_protects_an_early_leaver():
         assert kwh(plan, "a", hours * 12) >= S.ALPHA * frac * 14 - 1e-6
 
 
+def test_progress_floor_is_anchored_to_arrival_not_to_now():
+    """Rolling re-solve every 5 min: a floor anchored to `now` is always 30 min away and never binds (the day replay
+    found a car at 0 kWh an hour after plug-in). Anchored to arrival, a car 55 min in must get energy in the next slot."""
+    price = [0.40] * 48 + [0.10] * (H - 48)  # the cheap window holds everything, so only the floor lands early
+    late = car("a", 8, 14, arrived_hours_ago=55 / 60)
+    plan = solve([late], site(), signal(), tariff(price), NOW)
+    L = 11 + 96 - S.SPRINT_SLOTS  # slots from arrival to deadline minus buffer
+    assert kwh(plan, "a", 1) >= min(S.ALPHA * (12 / L) * 14, 7.0 * SLOT_H) - 1e-6, "the 60-min checkpoint is one slot away"
+    assert met(plan, "a", 14.0), "an unreachable checkpoint bends the floor, not the total"
+    half_done = car("a", 8, 14, delivered=7.0, arrived_hours_ago=1.0)
+    assert kwh(solve([half_done], site(), signal(), tariff(price), NOW), "a", 12) == 0, "delivered energy counts toward the floor"
+
+
+def test_progress_floor_survives_a_rolling_resolve_under_a_falling_signal():
+    """The morning MOER falls every slot until noon. A floor anchored to `now` lets each 5-min re-solve push the sip
+    to the slot just before a checkpoint that itself keeps moving; the car never charges."""
+    moer = [600.0 - 10 * t for t in range(48)] + [100.0] * (H - 48)
+    price = [0.40] * 48 + [0.10] * (H - 48)
+    c, delivered, now = car("a", 8, 14), 0.0, NOW
+    for k in range(12):  # one hour of 5-min re-solves
+        plan = solve([dict(c, kwh_delivered=delivered)], site(), signal(moer[k:] + moer[:k]), tariff(price[k:] + price[:k]), now)
+        delivered += plan["a"][0] * SLOT_H
+        now += timedelta(minutes=5)
+    assert delivered >= S.ALPHA * (12 / 90) * 14 - 1e-6, f"after an hour the car holds only {delivered:.2f} kWh"
+
+
 def test_tariff_only_and_deadline_only_rungs_still_meet_deadlines():
     cars = [car("a", 6, 20), car("b", 3, 12)]
     for sig, tar in ((signal(), tariff()), ({"moer": [], "kind": None}, tariff()), ({"moer": [], "kind": None}, tariff([]))):
@@ -152,6 +178,27 @@ def test_short_and_nan_signal_arrays_are_tolerated():
     st["building_load_kw"] = [20.0] * 5
     plan = solve([car("a", 6, 20)], st, sig, tar, NOW)
     assert met(plan, "a", 20.0)
+
+
+def test_baseline_of_nearly_full_cars_solves():
+    """Captured from the day replay at 14:05: the baseline call for 38 nearly-full ASAP cars returned HiGHS
+    'Unknown' because the only objective terms were 1e-7 tie-breaks. ASAP cars now carry ASAP_EPS."""
+    import json
+    from pathlib import Path
+    d = json.loads((Path(__file__).parent / "fixtures" / "baseline_1405.json").read_text())
+    now = datetime.fromisoformat(d["now"])
+    cars = [dict(c, arrival=datetime.fromisoformat(c["arrival"]), departure=datetime.fromisoformat(c["departure"])) for c in d["cars"]]
+    plan, info = solve_lp(cars, d["site"], d["signal"], d["tariff"], now)
+    assert info["status"] == "optimal", info["status"]
+    assert sum(info["shortfall_kwh"].values()) == 0
+    need = sum(c["kwh_needed"] - c["kwh_delivered"] for c in cars)
+    got = sum(kwh(plan, c["connector_id"], 6) for c in cars)
+    assert got >= 0.9 * need, "charge-immediately: the remainder lands within 30 min (the 6 A trim may drop a car for one slot)"
+
+
+def test_car_below_e_min_just_finishes_at_min_kw():
+    plan, info = solve_lp([car("a", 6, 10.0, delivered=9.98)], site(), signal(), tariff(), NOW)
+    assert info["status"] == "optimal" and plan["a"][0] == S.MIN_KW and sum(plan["a"]) == S.MIN_KW
 
 
 # ---- 6 A floor post-step ----
