@@ -36,9 +36,10 @@ def site_kw(plan, t):
 
 
 def met(plan, cid, needed, upto=H):
-    """Planned energy covers the need; the 6 A floor may add at most one MIN_KW slot on top."""
+    """Planned energy covers the need (values are rounded down to 1 W, so allow 1 Wh). The 6 A round-up may add a
+    MIN_KW slot per floor sip on top; the car stops when full, so over-planning is harmless. Allow four."""
     got = kwh(plan, cid, upto)
-    return needed - 1e-6 <= got <= needed + S.MIN_KW * SLOT_H + 1e-6
+    return needed - 1e-3 <= got <= needed + 4 * S.MIN_KW * SLOT_H + 1e-6
 
 
 # ---- the three asserts from team-plan.md ----
@@ -145,6 +146,23 @@ def test_progress_floor_survives_a_rolling_resolve_under_a_falling_signal():
         delivered += plan["a"][0] * SLOT_H
         now += timedelta(minutes=5)
     assert delivered >= S.ALPHA * (12 / 90) * 14 - 1e-6, f"after an hour the car holds only {delivered:.2f} kWh"
+
+
+def test_taper_tail_is_not_planned_into_the_last_slot():
+    """Winter replay on the real MOER: a flat signal let the LP put a car's last 0.7 kWh into the single cleanest
+    slot before the buffer at a planned 7 kW; at 92% SoC the car tapers to 2.8 kW, the rest spilled into the
+    buffer and the driver, leaving 12 min before the stated time, was 0.2 kWh short. 22 of 40 cars ended that way."""
+    moer = [460.0 - 0.5 * t for t in range(H)]  # nearly flat, cleanest just before the deadline
+    tapering = car("a", 2, 8.6, delivered=7.918, arrived_hours_ago=6)
+    plan = solve([tapering], site(), signal(moer), tariff(), NOW)
+    cap = 7.0 * max(S.TAPER_MIN, (1 - 7.918 / 8.6) / (1 - S.TAPER_SOC))
+    assert max(plan["a"]) <= cap + 1e-9, "a tapering car is never planned above what it can draw"
+    assert met(plan, "a", 8.6 - 7.918) and sum(v > 0 for v in plan["a"]) >= 3
+    fresh = car("a", 5, 12)  # cleanest slots are the latest, so without the tail rule everything would land late
+    plan = solve([fresh], site(), signal(moer), tariff(), NOW)
+    tail = int(-(-(0.2 * 12) // (S.TAPER_AVG * 7.0 * SLOT_H)))  # slots the slow last 20% needs (14)
+    assert kwh(plan, "a", 60 - S.SPRINT_SLOTS - tail) >= 0.8 * 12 - 1e-3, "the fast 80% is done before the tail window"
+    assert met(plan, "a", 12.0)
 
 
 def test_tariff_only_and_deadline_only_rungs_still_meet_deadlines():

@@ -7,10 +7,29 @@ Contract: the three signatures in the stub Tirth froze are unchanged; `api.py` c
 
 | Hour | Gate | Status |
 |---|---|---|
-| 6 | `prove.py` prints >= 15% saving; slide 1 exists | Done on seeded data: **$ -19.8%, CO2 -37.5%, peak -9.1%**, 0 fallbacks. On the real CAISO average signal for 2026-04-14: CO2 -61%, $ -7.8%. Real ACN sessions still to fetch (token). |
+| 6 | `prove.py` prints >= 15% saving; slide 1 exists | Done on the **real WattTime CAISO_NORTH MOER for 2026-04-14** (seeded sessions): **$ -20.1%, CO2 -100%, peak -9.1%**, 0 fallbacks. Other days below. Real ACN sessions still to fetch (token). |
 | 10 | `solve()` / `impact()` / `price()` frozen | Done, signatures identical to the stub. `solve_lp()` and `impact_detail()` added for prove.py, not for the API. |
 | 16-30 | impact engine, price tiers | Done. Receipt path in `api.py` fixed so the receipt is metered-vs-baseline, not the shrinking remainder. |
-| 30-48 | support demo scenarios, tune weights | Four demo endpoints exercised by `tests/test_day.py`. `W_CARBON` sweep via `prove.py --w-carbon`. Remaining: run on real data, pick the final weight, re-read the printed numbers with Srishti. |
+| 30-48 | support demo scenarios, tune weights | Four demo endpoints exercised by `tests/test_day.py`. `W_CARBON` decided (below). Remaining: ACN sessions, re-read the printed numbers with Srishti. |
+
+## Real signal: three days, same 40 seeded sessions (`prove.py`)
+
+| Day | MOER shape | $ | CO2 | peak | short of full |
+|---|---|---|---|---|---|
+| 2026-04-14 (demo) | 0 g/kWh 08:00-18:00, ~440 overnight | -20.1% | **-100%** (14.7 -> 0.0 kg) | -9.1% | 0 |
+| 2026-07-14 | 0 g/kWh 12:00-17:00, 180-480 elsewhere | -20.5% | -92.8% (124 -> 9 kg) | -9.1% | 2 early leavers (by design) |
+| 2026-01-20 | flat 413-494 all day (gas at the margin) | -20.0% | -3.8% (151 -> 145 kg) | -9.1% | 2 early leavers |
+
+Say on the slide: the $ and peak savings come from the tariff and the block and hold every day; the CO2 saving is
+the grid's to give, huge on solar days and near zero when gas sets the margin all day. Quote the range, not April.
+The winter day also exposed a modelling gap (battery taper vs a flat signal) that is now fixed and tested.
+
+## `W_CARBON` decision: 0.05 $/kg, kept
+
+Sweep on the real April MOER (`prove.py --w-carbon`): W=0 (tariff-only) **raises** emissions 16.7% vs charge-now,
+because it runs 100 kW flat through a 172 g/kWh blip at 10:00-11:00 that the tariff cannot see; W=0.02 and every
+value up to 0.5 give the full -100% with an identical $ saving (20.1%) and identical peak. The knee is at the first
+step, so the weight stays at the $50/t anchor. Re-check with `--w-carbon` once ACN sessions are in.
 
 ## Run it
 
@@ -74,14 +93,13 @@ python scripts/fetch_data.py caiso --day 2026-04-14  # no-auth fallback, kind=av
 
 ## What is still open for Neal
 
-1. **Real data.** Register WattTime and ACN-Data, run `fetch_data.py signal` and `sessions`, re-run `prove.py`.
-   Check both datasets cover the same day; ACN coverage may not reach 2026, in which case re-date a spring 2019
-   weekday's sessions onto the signal day (the script does this) and say so on the slide.
-2. **`W_CARBON`.** $0.05/kg makes carbon ~10% of the tariff signal. On the seeded data both point the same way
-   (midday), so it barely matters; check on the real MOER, sweep with `--w-carbon`, keep the number honest.
-3. **Average vs marginal.** If WattTime stalls, the CAISO fallback is average intensity; `signal.kind` is
+1. **ACN sessions.** WattTime is done (account `neal_noonshift`, credentials in `~/noonshift-credentials.json`,
+   verified). ACN-Data needs a registration with a real last name and affiliation; then
+   `python scripts/fetch_data.py sessions --day 2026-04-14 --n 40` (or a spring 2019 weekday re-dated, and say so),
+   re-run `prove.py` and the `--w-carbon` sweep.
+2. **Average vs marginal.** If WattTime stalls, the CAISO fallback is average intensity; `signal.kind` is
    "average" and prove.py says so. Slide 1 must not call it marginal.
-4. **Early leavers get 81-89% under Noonshift vs 100% under charge-now** on the seeded day. That is the design
+3. **Early leavers get 75-90% under Noonshift vs 100% under charge-now** on the seeded days. That is the design
    trade-off the progress floor bounds (>= 50% pro-rata). Put it on the hard-questions slide, not in a footnote.
 
 ## Notes for the others

@@ -12,8 +12,8 @@ Hackathon entry: "Noonshift" — a CPO-side, deadline-based EV charging schedule
 
 ## Current State & Focus
 - Tirth's lane on main: api.py (7 endpoints, /ws, ladder, /demo/*), sim.py (1-min clock, taper), ocpp_gateway.py, db.py, seed.py, docker, hosting.
-- Neal's lane on branch `neal/scheduler-proof`: real `scheduler.py`, impact/price, receipt fix in api.py, 52 tests, prove.py, fetch_data.py. prove.py on seeded data: $ -19.8%, CO2 -37.5%, peak -9.1%, 0 fallbacks.
-- Next: fetch real WattTime MOER + ACN sessions (tokens), re-run prove.py, tune W_CARBON; front-ends; pitch.
+- Neal's lane merged (PR #2): real `scheduler.py`, impact/price, receipt fix in api.py, 53 tests, prove.py, fetch_data.py. `data/signal.json` is the real WattTime MOER for 2026-04-14; sessions still seeded. prove.py: $ -20.1%, CO2 -100%, peak -9.1%, 0 fallbacks (April); winter day CO2 -3.8%.
+- Next: ACN-Data sessions (needs registration with real name/affiliation), front-ends, pitch.
 
 ## Architecture
 Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (deadline, kWh) + site meters
@@ -45,7 +45,9 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - HiGHS returns "Unknown" (status 4) when the objective is only 1e-7 tie-breaks (all-ASAP baseline of nearly-full cars). Keep ASAP_EPS = 1e-3; `solve()` falls open to full power and logs ERROR if it ever happens.
 - Progress floor must be anchored to arrival, not `now`: a rolling re-solve otherwise defers it forever under a falling MOER.
 - Peak-based block overage in the LP means once one slot exceeds the block, exceeding everywhere is free; the post-step trim caps rounding at the block.
-- WattTime Basic (free): CAISO_NORTH only; 2+ yrs history; 72 h forecast. WattTime MOER is lbs/MWh → ×0.4536 = g/kWh. Electricity Maps free: 1 zone, 50 req/h, no forecast. NESO (GB): free, no auth.
+- WattTime Basic (free): CAISO_NORTH only (co2_moer + health_damage); 2+ yrs history; 72 h forecast. MOER is lbs/MWh → ×0.4536 = g/kWh. Registration is `POST /register`, then a Keycloak email link that needs a **second click** ("Click here to proceed") in the same cookie session before `/login` stops returning 403. Account `neal_noonshift`, creds in `~/noonshift-credentials.json` (outside the repo). Electricity Maps free: 1 zone, 50 req/h, no forecast. NESO (GB): free, no auth.
+- Real CAISO_NORTH MOER is 0 g/kWh for hours on solar days (marginal plant is renewable), flat ~450 on winter gas days: CO2 savings range from ~0% to 100% by day; $ and peak savings are tariff-driven and stable (~20% / ~9%).
+- Battery taper: the sim draws p_max*(1-SoC)/0.2 above 80% SoC; the LP bounds tapering cars by that and reserves time for the slow last 20% (TAPER_* constants), else flat-signal days leave cars 0.2 kWh short.
 - CAISO fuel mix CSV: `https://www.caiso.com/outlook/history/YYYYMMDD/fuelsource.csv`, no auth, 5-min local time; 2026-04-14 midday average is ~14 g/kWh.
 - Windows Python has no tz database: `tzdata` (in requirements-dev) for `fetch_data.py`.
 - PG&E BEV rate: super-off-peak 09–14, peak 16–21, subscription kW blocks; overage in `impact()` is block_price × multiplier / 30 per day.
@@ -61,8 +63,10 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - 2026-09-12 — Baseline = same `solve()` with every departure = now (charge-now FCFS under the feed, no overage term); prove.py replays the day under both policies rather than overlaying frozen per-car baselines (those ignored the feed).
 - 2026-09-12 — Receipt = metered history vs baseline frozen at plug-in, energy-matched; no signal ⇒ no CO2 claim.
 - 2026-09-12 — Fairness = min-max shortfall fraction; floor anchored to arrival with its own slack; sprint buffer = surcharge; 30-min floor checkpoints.
+- 2026-09-12 — W_CARBON stays 0.05 $/kg: on the real April MOER, W=0 raises emissions 16.7% (100 kW through a 172 g blip at 10:00); every W in 0.02..0.5 gives -100% CO2 at identical $ and peak.
 
 ## Changelog
+2026-09-12 | Real WattTime MOER + taper-aware tail | data/signal.json, noonshift/scheduler.py, tests/, neal-plan.md | Winter flat-signal day exposed taper gap; 3-day range recorded; W_CARBON kept 0.05
 2026-09-12 | Neal's lane: scheduler, impact, prove, fetch, tests | noonshift/scheduler.py, api.py, scripts/, tests/, neal-plan.md, README | 4 defects found by the day replay fixed with failing-first tests; scipy pinned 1.14
 2026-09-12 | Tirth's lane: api, sim, OCPP, docker, hosting | noonshift/*, data/, docker-compose.yml, render.yaml | Stubs with frozen signatures; ladder shapes inputs not calls
 2026-09-12 | Narrative md proposal with diagrams + case studies | noonshift-proposal.md | Real deployments as case studies
