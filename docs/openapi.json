@@ -60,9 +60,60 @@
     }
    }
   },
+  "/sessions/{sid}/urgency": {
+   "post": {
+    "summary": "Urgency",
+    "description": "business.md \u00a74b. now: deadline = now, full power (the ASAP path). soon: deadline = leave_at, the LP picks the\ncleanest slots inside the window (< 15 min away = now). priority: deadline unchanged, floor 90 % pro-rata and the\nshortfall weight doubled. Every band marks the session urgent, so price() returns exactly R.",
+    "operationId": "urgency_sessions__sid__urgency_post",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Sid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UrgencyIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SessionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/sessions/{sid}/boost": {
    "post": {
     "summary": "Boost",
+    "description": "Alias for urgency \"now\" (WattWise's \"Charge now\" button).",
     "operationId": "boost_sessions__sid__boost_post",
     "parameters": [
      {
@@ -292,7 +343,7 @@
   "/price": {
    "get": {
     "summary": "Price Preview",
-    "description": "Deadline sets the price: preview the tier for a ready-by time before the driver commits.",
+    "description": "What a ready-by would cost before plugging in. No session yet, so the discount is today's site saving rate so far\n(sum of measured session savings over delivered kWh) applied to this need: an estimate, settled on the receipt.",
     "operationId": "price_preview_price_get",
     "parameters": [
      {
@@ -1021,6 +1072,22 @@
      "boost": {
       "type": "boolean",
       "title": "Boost"
+     },
+     "urgency": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "now",
+         "soon",
+         "priority"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Urgency"
      }
     },
     "type": "object",
@@ -1126,6 +1193,36 @@
      "connectors_active"
     ],
     "title": "StatusOut"
+   },
+   "UrgencyIn": {
+    "properties": {
+     "level": {
+      "type": "string",
+      "enum": [
+       "now",
+       "soon",
+       "priority"
+      ],
+      "title": "Level"
+     },
+     "leave_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Leave At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "level"
+    ],
+    "title": "UrgencyIn"
    },
    "ValidationError": {
     "properties": {

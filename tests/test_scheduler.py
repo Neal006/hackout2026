@@ -239,7 +239,8 @@ def test_rounding_up_still_respects_site_limit():
 
 
 def test_rounding_up_never_creates_block_overage_the_lp_did_not_choose():
-    cars = [car(f"c{i}", 6, 10) for i in range(40)]  # 400 kWh over 5.5 h: fits under the 100 kW block
+    # 400 kWh over 5.5 h fits under the 100 kW block; plugged in an hour ago, so no first-hour floors compete for it
+    cars = [car(f"c{i}", 6, 10, arrived_hours_ago=1.0) for i in range(40)]
     plan = solve(cars, site(), signal(), tariff(), NOW)
     assert no_sub_min(plan)
     assert max(site_kw(plan, t) for t in range(H)) <= 100 + 1e-6
@@ -253,3 +254,41 @@ def test_trim_drops_a_car_to_zero_not_below_min_kw():
     assert no_sub_min(plan)
     for t in range(H):
         assert site_kw(plan, t) <= 130 + 1e-6
+
+
+# ---- urgency (business.md §4b) and the first-hour floor (§4) ----
+def test_first_hour_floor_beats_a_dumb_charger_in_the_hour_that_matters():
+    """Priya: 12 kWh over 9 h, expensive first two hours. Pro-rata alone gives 0.67 kWh at 60 min; she needs 3.5 to
+    reach the clinic. The floor is elastic (a car that needs less gets its whole need)."""
+    price = [0.40] * 24 + [0.10] * (H - 24)
+    plan = solve([car("a", 9, 12)], site(), signal(), tariff(price), NOW)
+    assert kwh(plan, "a", S.FIRST_HOUR_SLOTS) >= S.FIRST_HOUR_KWH - 1e-6
+    small = solve([car("b", 9, 2.0)], site(), signal(), tariff(price), NOW)
+    assert kwh(small, "b", S.FIRST_HOUR_SLOTS) >= 2.0 - 1e-6
+    late = solve([car("c", 9, 12, delivered=2.5, arrived_hours_ago=50 / 60)], site(), signal(), tariff(price), NOW)
+    assert kwh(late, "c", 2) >= 1.0 - 1e-6, "anchored to arrival: 50 min in with 2.5 kWh, the last kWh lands in two slots"
+    rush = [car(f"c{i}", 6, 10) for i in range(40)]  # 140 kWh of first-hour floors: more than the block, less than the feed
+    plan = solve(rush, site(), signal(), tariff(), NOW)
+    assert 100 < max(site_kw(plan, t) for t in range(H)) <= 130 + 1e-6, "a mass arrival bursts the tariff block, never the feed"
+    first = sorted(kwh(plan, c["connector_id"], S.FIRST_HOUR_SLOTS) for c in rush)
+    assert sum(first) == pytest.approx(130.0, abs=1.0) and first[len(first) // 2] == pytest.approx(S.FIRST_HOUR_KWH, abs=1e-6),         "the whole feed goes to first hours (ponytail: the residual is not min-max shared; staggered real arrivals never hit this)"
+
+
+def test_priority_car_holds_90_percent_pro_rata_at_every_checkpoint():
+    price = [0.40] * 60 + [0.10] * (H - 60)  # cheap from 5 h: the fast 80 % fits there, so early slots hold only floors
+    plan = solve([dict(car("a", 8, 14), floor_alpha=0.9)], site(), signal(), tariff(price), NOW)
+    for hours in (1, 2, 4):
+        frac = hours * 12 / (96 - S.SPRINT_SLOTS)
+        assert kwh(plan, "a", hours * 12) >= 0.9 * frac * 14 - 1e-6, hours
+    plain = solve([car("a", 8, 14)], site(), signal(), tariff(price), NOW)
+    assert kwh(plain, "a", 48) < 0.9 * (48 / 90) * 14 - 1.0, "a plain car holds only the 50 % floor"
+
+
+def test_priority_car_has_zero_shortfall_while_the_others_share():
+    cars = [car(f"c{i}", 2, 12) for i in range(40)]  # 480 kWh wanted, 260 possible; 12 kWh fits in 2 h at 7 kW
+    cars[7] = dict(cars[7], priority=2.0)
+    plan, info = solve_lp(cars, site(), signal(), tariff(), NOW)
+    assert info["status"] == "optimal" and info["shortfall_kwh"]["c7"] == pytest.approx(0.0, abs=1e-3)
+    assert met(plan, "c7", 12.0)
+    others = [info["shortfall_kwh"][f"c{i}"] for i in range(40) if i != 7]
+    assert min(others) > 0 and max(others) - min(others) <= 0.1 * max(others), "the rest still share evenly"

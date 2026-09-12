@@ -72,4 +72,22 @@ def test_empty_and_ragged_inputs():
 @pytest.mark.parametrize("slack,tier", [(4, "green"), (10, "green"), (3.99, "standard"), (1, "standard"), (0.99, "boost"),
                                         (0, "boost"), (-2, "boost"), (math.nan, "standard"), (None, "standard")])
 def test_price_tiers_are_total(slack, tier):
-    assert price(slack)["tier"] == tier and price(slack)["usd_per_kwh"] > 0
+    assert price(slack)["tier"] == tier and price(slack)["usd_per_kwh"] == 0.0, "old signature: free site, label only"
+
+
+# ---- business.md §7b: R − α·S/E, never above R; urgency pays R ----
+def test_price_never_exceeds_r_and_urgent_pays_r():
+    assert price(6, r=0.25, saving_usd=5.0, kwh=10.0)["usd_per_kwh"] == 0.0, "clamped at zero when the share exceeds R"
+    assert price(6, r=0.25, saving_usd=-3.0, kwh=10.0)["usd_per_kwh"] == 0.25, "a bad forecast never surcharges"
+    assert price(6, r=0.25, saving_usd=0.0, kwh=10.0)["usd_per_kwh"] == 0.25, "zero saving => R"
+    assert price(6, r=0.25, saving_usd=2.0, kwh=10.0, urgent=True) == {"tier": "green", "usd_per_kwh": 0.25}
+    assert price(0.5, r=0.25, saving_usd=2.0, kwh=10.0) == {"tier": "boost", "usd_per_kwh": 0.25}
+    assert price(6, r=0.25, saving_usd=2.0, kwh=0.0)["usd_per_kwh"] == 0.25, "unknown energy => no discount, not a free car"
+    assert price(6, r=None, saving_usd=2.0, kwh=10.0)["usd_per_kwh"] == 0.0, "free workplace charging stays free"
+
+
+def test_price_reproduces_the_caltech_day_number():
+    """metrics.md §6b: S = 2.20 USD over 378.9 kWh at alpha 0.5 => 0.3 c/kWh discount, green price 0.247 at R = 0.25."""
+    out = price(5, r=0.25, saving_usd=2.20, kwh=378.9, alpha=0.5)
+    assert out["tier"] == "green" and out["usd_per_kwh"] == pytest.approx(0.247, abs=5e-4)
+    assert 0.25 - out["usd_per_kwh"] == pytest.approx(0.0029, abs=2e-4)
