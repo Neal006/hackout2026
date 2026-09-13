@@ -253,8 +253,9 @@ def solve(cars, site, signal, tariff, now) -> dict[str, list[float]]:
     return solve_lp(cars, site, signal, tariff, now)[0]
 
 
-def _totals(plan, moer, price, tariff):
-    """kWh, $ (energy + this day's share of block overage), kg CO2 and peak kW of one {cid: [kW per slot]} dict."""
+def _totals(plan, moer, price, tariff, health=None):
+    """kWh, $ (energy + this day's share of block overage), kg CO2, peak kW and (with a health-damage index, $/MWh)
+    health $ of one {cid: [kW per slot]} dict."""
     site_kw = np.zeros(HORIZON)
     for p in plan.values():
         a = np.asarray(list(p)[:HORIZON], dtype=float)
@@ -267,25 +268,34 @@ def _totals(plan, moer, price, tariff):
     block = tariff.get("block_kw")
     if block is not None:
         usd += max(0.0, peak - block) * tariff.get("block_price", 0.0) * tariff.get("overage_multiplier", 2.0) / DAYS_PER_MONTH
-    return {"kwh": kwh, "usd": usd, "kgco2": kg, "peak_kw": peak}
+    out = {"kwh": kwh, "usd": usd, "kgco2": kg, "peak_kw": peak}
+    if health is not None:
+        out["health_usd"] = float((site_kw * SLOT_H * health / 1000).sum())  # $/MWh -> $ per kWh-slot
+    return out
 
 
 def impact_detail(plan, baseline, signal, tariff) -> dict:
     """Both totals plus the savings. Energy-matched: the baseline is scaled to the plan's kWh, so a plan that
     delivered less (shortfall) cannot book the undelivered energy as a saving. No signal => kg CO2 is 0, not guessed."""
     moer, price = _per_slot(signal.get("moer")), _per_slot(tariff.get("price_per_kwh"))
-    p, b = _totals(plan, moer, price, tariff), _totals(baseline, moer, price, tariff)
+    health = _per_slot(signal["health_damage"]) if signal.get("health_damage") else None
+    p, b = _totals(plan, moer, price, tariff, health), _totals(baseline, moer, price, tariff, health)
     ratio = p["kwh"] / b["kwh"] if b["kwh"] > 0 else 0.0
     return {"plan": p, "baseline": b, "energy_matched": abs(p["kwh"] - b["kwh"]) < 1e-6,
             "saved_usd": round(b["usd"] * ratio - p["usd"], 4),
             "saved_kgco2": round(b["kgco2"] * ratio - p["kgco2"], 4) if signal.get("moer") else 0.0,
+            "health_usd": round(b["health_usd"] * ratio - p["health_usd"], 4) if health is not None else None,
             "signal_kind": signal.get("kind")}
 
 
-def impact(plan, baseline, signal, tariff) -> dict[str, float]:
-    """Savings of `plan` vs `baseline` (both {connector_id: [kW per slot]}), keys exactly as LiveOut expects."""
+def impact(plan, baseline, signal, tariff, *, health=False) -> dict[str, float]:
+    """Savings of `plan` vs `baseline` (both {connector_id: [kW per slot]}), keys exactly as LiveOut expects.
+    health=True adds health_usd (metrics.md §4; None when the signal carries no health_damage index)."""
     d = impact_detail(plan, baseline, signal, tariff)
-    return {"saved_usd": d["saved_usd"], "saved_kgco2": d["saved_kgco2"]}
+    out = {"saved_usd": d["saved_usd"], "saved_kgco2": d["saved_kgco2"]}
+    if health:
+        out["health_usd"] = d["health_usd"]
+    return out
 
 
 def tier_of(slack_hours) -> str:
