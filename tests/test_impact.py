@@ -91,3 +91,12 @@ def test_price_reproduces_the_caltech_day_number():
     out = price(5, r=0.25, saving_usd=2.20, kwh=378.9, alpha=0.5)
     assert out["tier"] == "green" and out["usd_per_kwh"] == pytest.approx(0.247, abs=5e-4)
     assert 0.25 - out["usd_per_kwh"] == pytest.approx(0.0029, abs=2e-4)
+
+
+def test_health_usd_is_keyword_only_and_none_without_an_index():
+    plan, base = {"a": series(7, 12, start=60)}, {"a": series(7, 12)}
+    assert "health_usd" not in impact(plan, base, sig(), tar())
+    assert impact(plan, base, sig(), tar(), health=True)["health_usd"] is None
+    s = dict(sig(), health_damage=[50.0] * 60 + [0.0] * (H - 60))  # $/MWh: only the first five hours hurt
+    out = impact(plan, base, s, tar(), health=True)
+    assert out["health_usd"] == pytest.approx(7 * 12 * (5 / 60) * 50 / 1000, abs=1e-6), "the shifted 7 kWh left the damaging hours"

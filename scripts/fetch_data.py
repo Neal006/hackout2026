@@ -1,6 +1,7 @@
 """Download the demo day into data/*.json (same schema seed.py writes) so the demo runs offline.
 
-    python scripts/fetch_data.py signal   --day 2026-04-14          # WattTime CAISO_NORTH MOER (needs WATTTIME_USER/PASSWORD)
+    python scripts/fetch_data.py signal   --day 2026-04-14          # WattTime CAISO_NORTH MOER (+ health_damage when the plan returns it)
+    python scripts/fetch_data.py signal   --day 2026-04-14 --forecast   # the MOER forecast as published at 06:00 that day -> data/signal_forecast.json
     python scripts/fetch_data.py caiso    --day 2026-04-14          # fallback: CAISO fuel mix -> AVERAGE intensity, no auth
     python scripts/fetch_data.py sessions --day 2019-04-09 --n 40   # ACN-Data Caltech sessions (needs ACN_TOKEN; data spans 2018-04..2021-09), re-dated to --site-day
 
@@ -51,21 +52,57 @@ def to_slots(points, day):
     return [round(v, 1) for v in out], gaps
 
 
-def watttime(day):
+def _watttime_token():
     user, pw = os.environ.get("WATTTIME_USER"), os.environ.get("WATTTIME_PASSWORD")
     if not (user and pw):
         sys.exit("set WATTTIME_USER and WATTTIME_PASSWORD (free Basic plan covers CAISO_NORTH)")
     auth = base64.b64encode(f"{user}:{pw}".encode()).decode()
-    token = json.loads(get("https://api.watttime.org/login", {"Authorization": f"Basic {auth}"}))["token"]
+    return json.loads(get("https://api.watttime.org/login", {"Authorization": f"Basic {auth}"}))["token"]
+
+
+def _pt(iso):
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(PT)
+
+
+def watttime(day, forecast=False):
+    token = _watttime_token()
     start = datetime.combine(day, datetime.min.time(), PT).astimezone(timezone.utc)
+    hdr = {"Authorization": f"Bearer {token}"}
+    if forecast:
+        # solutions.md §6: the forecast a product would have planned on at 06:00 that morning, not the realised signal.
+        # Assumption: WattTime Basic serves /v3/forecast/historical for CAISO_NORTH; if it does not, run this on a live
+        # day with /v3/forecast and the flag stays wired.
+        at = start + timedelta(hours=6)
+        q = urllib.parse.urlencode({"region": "CAISO_NORTH", "signal_type": "co2_moer", "start": at.isoformat(),
+                                    "end": (at + timedelta(minutes=5)).isoformat(), "horizon_hours": 24})
+        gens = json.loads(get(f"https://api.watttime.org/v3/forecast/historical?{q}", hdr))["data"]
+        if not gens:
+            sys.exit("no historical forecast returned for that day")
+        g = gens[0]
+        points = [(_pt(p["point_time"]), p["value"] * LBS_PER_MWH_TO_G_PER_KWH) for p in g["forecast"]]
+        moer, gaps = to_slots(points, day)
+        json.dump({"kind": "marginal", "region": "CAISO_NORTH", "date": day.isoformat(), "forecast": True,
+                   "generated_at": g.get("generated_at"), "source": "WattTime v3 co2_moer forecast (historical)", "moer": moer},
+                  open("data/signal_forecast.json", "w"))
+        print(f"wrote data/signal_forecast.json: forecast generated {g.get('generated_at')}, {len(points)} points, {gaps} gaps filled "
+              f"(the hours before 06:00 are not in a 06:00 forecast), min {min(moer)} max {max(moer)} g/kWh")
+        return
     q = urllib.parse.urlencode({"region": "CAISO_NORTH", "signal_type": "co2_moer",
                                 "start": start.isoformat(), "end": (start + timedelta(days=1)).isoformat()})
-    data = json.loads(get(f"https://api.watttime.org/v3/historical?{q}", {"Authorization": f"Bearer {token}"}))["data"]
-    points = [(datetime.fromisoformat(p["point_time"].replace("Z", "+00:00")).astimezone(PT), p["value"] * LBS_PER_MWH_TO_G_PER_KWH)
-              for p in data]
+    data = json.loads(get(f"https://api.watttime.org/v3/historical?{q}", hdr))["data"]
+    points = [(_pt(p["point_time"]), p["value"] * LBS_PER_MWH_TO_G_PER_KWH) for p in data]
     moer, gaps = to_slots(points, day)
-    json.dump({"kind": "marginal", "region": "CAISO_NORTH", "date": day.isoformat(), "source": "WattTime v3 co2_moer",
-               "moer": moer}, open("data/signal.json", "w"))
+    out = {"kind": "marginal", "region": "CAISO_NORTH", "date": day.isoformat(), "source": "WattTime v3 co2_moer", "moer": moer}
+    try:  # metrics.md §4: the health-damage index ($/MWh) rides along when the plan serves it
+        q = urllib.parse.urlencode({"region": "CAISO_NORTH", "signal_type": "health_damage",
+                                    "start": start.isoformat(), "end": (start + timedelta(days=1)).isoformat()})
+        hd = json.loads(get(f"https://api.watttime.org/v3/historical?{q}", hdr))["data"]
+        out["health_damage"], hd_gaps = to_slots([(_pt(p["point_time"]), p["value"]) for p in hd], day)
+        out["health_source"] = "WattTime v3 health_damage ($/MWh)"
+        print(f"health_damage: {len(hd)} points, {hd_gaps} gaps filled, mean {sum(out['health_damage']) / SLOTS:.1f} $/MWh")
+    except Exception as e:  # noqa: BLE001
+        print(f"health_damage not stored ({e}); impact.health_usd stays None")
+    json.dump(out, open("data/signal.json", "w"))
     print(f"wrote data/signal.json: WattTime CAISO_NORTH MOER for {day}, {len(points)} points, {gaps} gaps filled, "
           f"min {min(moer)} max {max(moer)} g/kWh")
 
@@ -147,7 +184,8 @@ if __name__ == "__main__":
     ap.add_argument("--day", required=True, help="YYYY-MM-DD of the data to fetch")
     ap.add_argument("--site-day", default="2026-04-14", help="sessions: re-date onto this day so all files agree")
     ap.add_argument("--n", type=int, default=40)
+    ap.add_argument("--forecast", action="store_true", help="signal: fetch the 06:00 forecast for --day instead of the realised MOER")
     a = ap.parse_args()
     day = datetime.fromisoformat(a.day).date()
-    {"signal": lambda: watttime(day), "caiso": lambda: caiso(day),
+    {"signal": lambda: watttime(day, a.forecast), "caiso": lambda: caiso(day),
      "sessions": lambda: sessions(day, a.n, datetime.fromisoformat(a.site_day).date())}[a.what]()

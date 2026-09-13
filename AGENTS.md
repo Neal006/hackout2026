@@ -7,7 +7,7 @@ Hackathon entry: "Noonshift" — a CPO-side, deadline-based EV charging schedule
 ## Stack & Commands
 - Python 3.12/3.13 · FastAPI · scipy 1.14 (HiGHS LP) · mobilityhouse/ocpp · asyncpg/Postgres (optional) · Docker Compose. Two Vite front-ends: `web/` (ops dashboard, React+JSX+Tailwind 3, :5173) and `wattwise/` (driver app, React+TS+Tailwind 4, :5174); `npm install && npm run dev` in each, both proxy `/api` and `/ws` to :8000. `npm run build` in each, then `docker compose up` serves them on :3000 / :3001.
 - `python -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt`
-- `python -m pytest` (69 tests, ~90 s) · `python scripts/prove.py` (slide 1) · `python -m noonshift.test_loop` · `docker compose up -d --build`
+- `python -m pytest` (70 tests, ~90 s) · `python scripts/prove.py` (slide 1) · `python -m noonshift.test_loop` · `docker compose up -d --build`
 - Data: `python -m noonshift.seed gen` (placeholders) · `python scripts/fetch_data.py signal|caiso|sessions --day ...` (real).
 
 ## Current State & Focus
@@ -33,10 +33,12 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - `wattwise/src/api/noonshift.ts` — driver app client + hand-copied types; `connectWs()`, `onSimDay()` (ready-by is built on the **sim** day and must be > sim now).
 - `wattwise/src/context/WattwiseContext.tsx` — driver state: `POST /sessions` on the highest free connector (replayed sessions use c01–c36), `/live` polled every 2 s for the receipt, meter/plan frames for kW/kWh/window; unplug/day_reset moves the session to History.
 - `noonshift/ocpp_gateway.py` — two profiles per connector: static share at stack 0 (sent as a task after BootNotification, no expiry) + dynamic plan at stack 1 with `valid_to` = now + 15 min, refreshed every 10 sim-min; `Charger.profiles`, `Charger.apply(now)`; self-check `python -m noonshift.ocpp_gateway`. Never `await self.call()` inside an `@after` handler (deadlocks the message loop). `db.py`, `seed.py`, `test_loop.py` — Tirth's.
-- `scripts/prove.py` — two real-loop replays (charge-now vs Noonshift), slide-1 table, gate exit code.
+- `scripts/prove.py` — real-loop replays: charge-now vs Noonshift (+ `--policy timer` = dumb 09–14 timer; `--block/--feed` overrides; `--forecast <file>` plans on it and scores on data/signal.json); prints clean-hour share, block overage $, kWh short, stated-vs-actual departures; gate exit code. Timer delta on the real day: CO2 −56 %, bill −28.5 %, peak −28 %. At feed 80/block 50: CO2 −23 % but bill +7 % (deferred energy lands in the 16–21 h price peak).
+- `scripts/fit.py <sessions.json|csv>` — pre-sales site fit: `cash tiers | perks only | not a fit` from stated-slack median, tariff spread, demand charge, `--saving-rate` (measured). Caltech: perks only (slack median 3.8 h, 4/15/17).
+- `scripts/replay_days.py --days a,b,c` — min/median/max over `data/days/<date>.json` signals; names missing days instead of inventing them.
 - `scripts/smoke.py` — e2e without a browser: driver REST (`/price`, `/sessions`, `/boost`, `/live`) + `/ws` as the ops app sees it + all four `/demo/*` + ladder drop/restore; plugs 2 extra cars before the demo beats so early-unplug/boost always have a target.
 - `.docs/pitch/` — `deck.md` (slide list, all sourced), `demo-script.md` (4 min, 7 beats, what the audience sees per beat, failure modes), `hard-questions.md` (answers tied to code + tests).
-- `scripts/fetch_data.py` — WattTime / ACN-Data / CAISO fallback → `data/*.json`.
+- `scripts/fetch_data.py` — WattTime / ACN-Data / CAISO fallback → `data/*.json`; `signal --forecast` → `data/signal_forecast.json` via `/v3/forecast/historical` (untested: no WattTime creds on this machine); `signal` also stores `health_damage` ($/MWh) when the plan serves it → `impact(..., health=True)["health_usd"]`.
 - `tests/test_scheduler.py`, `test_impact.py`, `test_perf.py`, `test_day.py` (full day + demo scenarios), `tests/fixtures/baseline_1405.json`.
 - `.docs/neal-plan.md` — Neal's lane: status vs gates, LP deviations and why, edge-case→test matrix, open items.
 - `.docs/team-plan.md`, `.docs/noonshift-proposal.md`, `ev-green-charging-ideation.html` — plan and evidence base.
@@ -79,6 +81,7 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - 2026-09-12 — Session data = ACN 2019-04-09 re-dated onto the 2026 signal day; kwh_needed = delivered energy, stated departure = the driver's own input (early leavers kept).
 
 ## Changelog
+2026-09-13 | WP4 evidence scripts | scripts/prove.py, fetch_data.py, fit.py, replay_days.py, scheduler.impact(health=) | timer baseline is the judge's number (−56 % CO2 over a dumb timer); constrained site shows the carbon-vs-tariff conflict honestly; forecast flag wired, unverified without creds
 2026-09-13 | WP3 cars, needs, queues | models.py, sim.py, api.py, data/site.json, tests/test_day.py, scripts/smoke.py | vehicle form → per-car cap + kWh from SoC; observation guard believes the meter; connectors_asap c41/c42; done event + idle_min; Sim.waiting + move-by tightening; a notified done car moves within 10 min when someone waits
 2026-09-13 | WP2 fail-safe an inspector accepts: static share under everything | sim.py, api.py, scheduler.py, ocpp_gateway.py, models.py, data/site.json, tests/test_day.py | `full` rung, `apply_limits` fallback and the linprog fallback all return `safe_share_kw`; kill-the-loop test: 6 h with no step() never exceeds headroom and after 15 min never exceeds n × share; `StatusOut.safe_share_kw`
 2026-09-13 | WP1 pricing + emergency + first-hour floor | scheduler.py, api.py, models.py, data/site.json, tests/, scripts/smoke.py, .docs/implementation-plan.md | price() = §7b shared savings (never above R); urgency endpoint; slot-0 remaining-duration + time-anchored checkpoints fixed a lost-energy bug that the 3.5 kWh promise exposed
