@@ -6,7 +6,7 @@ import json
 import os
 from datetime import datetime, timedelta
 
-SPEED = float(os.environ.get("SIM_SPEED", "480"))  # sim-seconds per real second; 480 = one day in 3 min
+SPEED = float(os.environ.get("SIM_SPEED", "1"))  # sim-seconds per real second; 1 = real time (POST /demo/jump to skip ahead), 480 = a day in 3 min
 SLOT = timedelta(minutes=5)
 START_HOUR = 6  # nothing happens before 06:00; skip it
 DYN_VALID_MIN = 15  # a dynamic limit expires this many minutes after it was last set (OCPP profile valid_to); then safe share

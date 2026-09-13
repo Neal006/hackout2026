@@ -36,7 +36,7 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
   const maxDemand = data.length ? Math.max(...data.map((d) => d.gridDemandGw), 10) : 10;
 
   const getX = (index: number) => {
-    return paddingLeft + (index / (data.length - 1)) * chartWidth;
+    return paddingLeft + (index / Math.max(1, data.length - 1)) * chartWidth;
   };
 
   const getTariffY = (val: number) => {
@@ -49,14 +49,39 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
     return paddingTop + chartHeight * (1 - norm);
   };
 
+  const getCleanY = (val: number) => paddingTop + chartHeight * (1 - val / 100);
+
+  // The y for the metric the switcher has selected (points and hover follow it)
+  const getY = (d: HourlyDataPoint) =>
+    activeMetric === 'demand' ? getDemandY(d.gridDemandGw) : activeMetric === 'renewable' ? getCleanY(d.renewablePercent) : getTariffY(d.tariff);
+
   // Build SVG path strings
   const tariffPoints = data.map((d, i) => `${getX(i)},${getTariffY(d.tariff)}`).join(' ');
   const demandPoints = data.map((d, i) => `${getX(i)},${getDemandY(d.gridDemandGw)}`).join(' ');
+  const cleanPoints = data.map((d, i) => `${getX(i)},${getCleanY(d.renewablePercent)}`).join(' ');
 
-  // Optimal window = the hours the plan actually charges this car (isOptimal from the plan frame)
+  // Optimal window = the hours the plan actually charges this car (isOptimal from the plan frame); none = nothing drawn
   const optIdx = data.map((d, i) => (d.isOptimal ? i : -1)).filter((i) => i >= 0);
-  const optimalStartX = optIdx.length ? getX(optIdx[0]) : paddingLeft;
-  const optimalEndX = optIdx.length ? getX(optIdx[optIdx.length - 1] + 1 < data.length ? optIdx[optIdx.length - 1] + 1 : optIdx[optIdx.length - 1]) : paddingLeft;
+  const hasWindow = optIdx.length > 0;
+  const optLast = optIdx[optIdx.length - 1];
+  const optimalStartX = hasWindow ? getX(optIdx[0]) : paddingLeft;
+  const optimalEndX = hasWindow ? getX(Math.min(optLast + 1, data.length - 1)) : paddingLeft;
+  const windowLabel = hasWindow ? `${data[optIdx[0]].hourLabel} — ${(data[optLast + 1] ?? data[optLast]).hourLabel}` : '';
+
+  // Footer note from the data, not a fixed string
+  const cheapest = data.length ? data.filter((d) => d.tariff === minTariff) : [];
+  const cleanest = data.length ? data.reduce((a, b) => (b.renewablePercent > a.renewablePercent ? b : a)) : null;
+  const note = cheapest.length && cleanest
+    ? `Cheapest $${minTariff.toFixed(2)}/kWh ${cheapest[0].hourLabel}–${cheapest[cheapest.length - 1].hourLabel} · cleanest grid ${cleanest.renewablePercent}% at ${cleanest.hourLabel}`
+    : 'Waiting for today’s grid signal';
+
+  if (data.length < 2) {
+    return (
+      <div className="w-full bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-sm text-sm text-neutral-500">
+        Grid signals load once the backend is up — {note.toLowerCase()}.
+      </div>
+    );
+  }
 
   return (
     <div className="w-full bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-sm">
@@ -163,85 +188,60 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
             );
           })}
 
-          {/* Optimal Window Highlight Box */}
-          <rect
-            x={optimalStartX}
-            y={paddingTop}
-            width={optimalEndX - optimalStartX}
-            height={chartHeight}
-            fill="url(#optimalZone)"
-            rx="4"
-          />
-
-          {/* Optimal Window Left & Right Borders */}
-          <line
-            x1={optimalStartX}
-            y1={paddingTop}
-            x2={optimalStartX}
-            y2={paddingTop + chartHeight}
-            stroke="#A3C610"
-            strokeWidth="2"
-            strokeDasharray="4 3"
-          />
-          <line
-            x1={optimalEndX}
-            y1={paddingTop}
-            x2={optimalEndX}
-            y2={paddingTop + chartHeight}
-            stroke="#A3C610"
-            strokeWidth="2"
-            strokeDasharray="4 3"
-          />
-
-          {/* Optimal Window Label Banner */}
-          <g transform={`translate(${(optimalStartX + optimalEndX) / 2}, ${paddingTop + 14})`}>
-            <rect
-              x="-65"
-              y="-11"
-              width="130"
-              height="20"
-              rx="10"
-              fill="#171717"
-            />
-            <text
-              textAnchor="middle"
-              y="3"
-              fill="#D4F634"
-              fontSize="9"
-              fontWeight="bold"
-              fontFamily="JetBrains Mono, monospace"
-            >
-              ⚡ 11:40 PM — 2:10 AM
-            </text>
-          </g>
+          {/* Optimal window: box, borders, label — only when the plan has slots for this car */}
+          {hasWindow && (
+            <g>
+              <rect x={optimalStartX} y={paddingTop} width={optimalEndX - optimalStartX} height={chartHeight} fill="url(#optimalZone)" rx="4" />
+              <line x1={optimalStartX} y1={paddingTop} x2={optimalStartX} y2={paddingTop + chartHeight} stroke="#A3C610" strokeWidth="2" strokeDasharray="4 3" />
+              <line x1={optimalEndX} y1={paddingTop} x2={optimalEndX} y2={paddingTop + chartHeight} stroke="#A3C610" strokeWidth="2" strokeDasharray="4 3" />
+              <g transform={`translate(${(optimalStartX + optimalEndX) / 2}, ${paddingTop + 14})`}>
+                <rect x="-65" y="-11" width="130" height="20" rx="10" fill="#171717" />
+                <text textAnchor="middle" y="3" fill="#D4F634" fontSize="9" fontWeight="bold" fontFamily="JetBrains Mono, monospace">
+                  ⚡ {windowLabel}
+                </text>
+              </g>
+            </g>
+          )}
 
           {/* Grid Demand Line (Subtle dotted grey) */}
           <polyline
             fill="none"
             stroke="#9CA3AF"
-            strokeWidth="2"
+            strokeWidth={activeMetric === 'demand' ? '3' : '2'}
             strokeDasharray="4 4"
             points={demandPoints}
             opacity={activeMetric === 'demand' ? '1' : '0.45'}
           />
 
-          {/* Tariff Fill Area & Line */}
-          <polygon
-            points={`${paddingLeft},${paddingTop + chartHeight} ${tariffPoints} ${width - paddingRight},${paddingTop + chartHeight}`}
-            fill="url(#tariffArea)"
+          {/* Grid clean % (green) */}
+          <polyline
+            fill="none"
+            stroke="#10B981"
+            strokeWidth={activeMetric === 'renewable' ? '3' : '2'}
+            points={cleanPoints}
+            opacity={activeMetric === 'renewable' ? '1' : '0.3'}
           />
+
+          {/* Tariff Fill Area & Line */}
+          {activeMetric === 'tariff' && (
+            <polygon
+              points={`${paddingLeft},${paddingTop + chartHeight} ${tariffPoints} ${width - paddingRight},${paddingTop + chartHeight}`}
+              fill="url(#tariffArea)"
+            />
+          )}
 
           <polyline
             fill="none"
             stroke="#171717"
             strokeWidth={activeMetric === 'tariff' ? '3' : '2'}
             points={tariffPoints}
+            opacity={activeMetric === 'tariff' ? '1' : '0.35'}
           />
 
           {/* Data nodes */}
           {data.map((d, i) => {
             const x = getX(i);
-            const y = activeMetric === 'demand' ? getDemandY(d.gridDemandGw) : getTariffY(d.tariff);
+            const y = getY(d);
             const isHovered = hoveredPoint?.rawHour === d.rawHour;
 
             return (
@@ -322,14 +322,18 @@ export const EnergyConditionGraph: React.FC<EnergyConditionGraphProps> = ({
             <span>Site Load (kW)</span>
           </div>
           <div className="flex items-center gap-1.5">
+            <div className="w-3 h-0.5 bg-emerald-500" />
+            <span>Grid Clean (%)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded bg-[#D4F634]/50 border border-[#A3C610]" />
-            <span className="font-semibold text-neutral-800">Wattwise Optimal Window</span>
+            <span className="font-semibold text-neutral-800">{hasWindow ? 'Wattwise Optimal Window' : 'No plan yet — connect a vehicle'}</span>
           </div>
         </div>
 
         <div className="flex items-center gap-1 text-neutral-600 font-mono text-[11px]">
           <Info className="w-3.5 h-3.5 text-neutral-400" />
-          <span>Shifting avoids the 5.2 GW peak and locks in $3.35–$3.38/kWh</span>
+          <span>{note}</span>
         </div>
       </div>
     </div>

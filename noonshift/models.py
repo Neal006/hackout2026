@@ -150,6 +150,11 @@ class OutageIn(BaseModel):
     restore: bool = False  # true = put every rung back
 
 
+class JumpIn(BaseModel):
+    hour: int = Field(ge=0, le=23)
+    minute: int = Field(0, ge=0, le=59)
+
+
 # ---- WebSocket frames on /ws (one JSON object per frame, discriminated by "type") ----
 class ConnectorPlan(BaseModel):
     connector_id: str

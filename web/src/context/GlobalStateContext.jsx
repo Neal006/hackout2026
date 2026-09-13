@@ -385,6 +385,8 @@ export function GlobalStateProvider({ children }) {
         return post('/demo/signal_outage', { rungs: ['live'] });
       case 'demo_grid_restore':
         return post('/demo/signal_outage', { rungs: ['live'], restore: true });
+      case 'jump':
+        return post('/demo/jump', { hour: payload });
       case 'resolve_alert':
         setResolved((prev) => new Set(prev).add(payload));
         return;

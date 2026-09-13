@@ -24,11 +24,11 @@ export default function AppShell() {
   const navigate = useNavigate();
   const [note, setNote] = useState(null); // what the last demo button did, from the backend's `changed`
   // Where each scenario's effect is visible; new rows / a changed mode badge flash there (index.css .flash).
-  const SHOW_ON = { demo_late_surge: '/ops/sessions', demo_driver_early: '/ops/alerts', demo_grid_fail: '/ops/overview', demo_grid_restore: '/ops/overview' };
-  const demo = async (endpoint) => {
+  const SHOW_ON = { demo_late_surge: '/ops/sessions', demo_driver_early: '/ops/alerts', demo_grid_fail: '/ops/overview', demo_grid_restore: '/ops/overview', jump: '/ops/overview' };
+  const demo = async (endpoint, payload) => {
     setNote('…');
     try {
-      const r = await triggerEvent(endpoint);
+      const r = await triggerEvent(endpoint, payload);
       if (r.ok) {
         setNote((await r.json()).changed);
         navigate(SHOW_ON[endpoint]);
@@ -70,7 +70,16 @@ export default function AppShell() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <div className="text-[10px] uppercase font-medium text-ink-muted tracking-wider mb-1">Demo</div>
+            <div className="text-[10px] uppercase font-medium text-ink-muted tracking-wider mb-1">Fast-forward to</div>
+            <div className="grid grid-cols-3 gap-2">
+              {/* the sim runs at real time; these skip to the day's interesting moments (data/: arrivals peak 09, MOER 0 at 12, tariff peak 16-21) */}
+              {[[9, 'morning rush'], [12, 'solar noon'], [16, 'evening peak']].map(([h, why]) => (
+                <button key={h} onClick={() => demo('jump', h)} title={why} className="text-xs border border-border p-1.5 hover:border-ink transition-colors mono">
+                  {String(h).padStart(2, '0')}:00
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] uppercase font-medium text-ink-muted tracking-wider mb-1 mt-2">Demo</div>
             <div className="grid grid-cols-2 md:grid-cols-1 gap-2">
               <button onClick={() => demo('demo_driver_early')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Driver leaves early</button>
               <button onClick={() => demo('demo_late_surge')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">20 late arrivals</button>

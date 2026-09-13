@@ -95,7 +95,7 @@ python scripts/prove.py                             # the results table above, e
 Run the whole thing:
 
 ```bash
-# terminal 1 — backend (simulated day of 60 chargers; SIM_SPEED=480 plays a day in 3 minutes)
+# terminal 1 — backend (simulated day of 60 chargers at real time; the dashboard's fast-forward buttons skip ahead)
 python -m uvicorn noonshift.api:app --port 8000 --reload
 # terminal 2 — ops dashboard        # terminal 3 — driver app
 cd web && npm ci && npm run dev     # cd wattwise && npm ci && npm run dev   → :5173 and :5174
@@ -105,7 +105,7 @@ Or everything in containers: `docker compose up -d --build` → backend `:8000`,
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `SIM_SPEED` | `480` | sim-seconds per real second (`480` = one day in 3 min; `60` = real time) |
+| `SIM_SPEED` | `1` | sim-seconds per real second (`1` = real time, use `POST /demo/jump` or the dashboard's fast-forward buttons to skip ahead; `480` = one day in 3 min) |
 | `DATABASE_URL` | unset | Postgres DSN; unset → persistence is a no-op |
 | `OCPP` | unset | `1` → drive `OcppConnector` instead of the simulator |
 | `WATTTIME_USER` / `WATTTIME_PASSWORD` / `ACN_TOKEN` | unset | only for `scripts/fetch_data.py` |

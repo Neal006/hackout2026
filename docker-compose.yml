@@ -15,7 +15,7 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql://noonshift:noonshift@postgres/noonshift
-      SIM_SPEED: ${SIM_SPEED:-480}   # sim-seconds per real second; 480 = one day in 3 min
+      SIM_SPEED: ${SIM_SPEED:-1}   # sim-seconds per real second; 1 = real time (fast-forward from the dashboard), 480 = one day in 3 min
       OCPP: ${OCPP:-0}
     ports: ["8000:8000"]
     volumes:

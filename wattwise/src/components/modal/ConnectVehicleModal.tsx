@@ -29,6 +29,14 @@ export const ConnectVehicleModal: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnectModalOpen]);
 
+  // Esc closes, like the X
+  useEffect(() => {
+    if (!isConnectModalOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setIsConnectModalOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isConnectModalOpen, setIsConnectModalOpen]);
+
   // Deadline sets the price: preview the tier for this ready-by (GET /price)
   useEffect(() => {
     if (!isConnectModalOpen) return;
@@ -86,16 +94,14 @@ export const ConnectVehicleModal: React.FC = () => {
             </p>
           </div>
 
-          {/* Close button only available if already connected */}
-          {vehicle.connected && (
-            <button
-              onClick={() => setIsConnectModalOpen(false)}
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
-              aria-label="Close modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setIsConnectModalOpen(false)}
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+            aria-label="Close modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Vehicle snapshot pill */}

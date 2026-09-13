@@ -8,6 +8,7 @@ import json
 import os
 import random
 import statistics
+import time
 from collections import deque
 from datetime import datetime, timedelta
 
@@ -18,7 +19,7 @@ from pydantic import TypeAdapter
 
 from . import assist, db, scheduler, seed
 from .models import (AssistIn, AssistOut, WS_FRAMES, ConnectorMeter, ConnectorPlan, DemoOut, DrEvent, EventMsg, FlexHour, ImpactOut,
-                     LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, PricePreview, PriceTier, SessionIn, SessionOut,
+                     JumpIn, LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, PricePreview, PriceTier, SessionIn, SessionOut,
                      SignalHour, StatusOut, UrgencyIn)
 from .sim import SLOT, SPEED, Connector, Sim, load_sessions, safe_share_kw
 
@@ -280,24 +281,32 @@ async def step():
     for e in events:
         await event(e["name"], e)
         await db.save_session(sim.sessions[e["session_id"]])
-    if events or sim.now.minute % 5 == 0:
+    jumping = S.get("jump_to") and sim.now < S["jump_to"]
+    if sim.now.minute % 5 == 0 or (events and not jumping):  # mid-jump, events wait for the next 5-min solve (<= 5 sim-min)
         await resolve(f"event:{events[0]['name']}" if events else "tick")
     else:
         apply_limits()
     await broadcast(meter_msg())
     await db.save_meters(sim.now, [(c.id, c.session["id"], c.kw, c.session["kwh_delivered"]) for c in sim.active()])
     if sim.now >= sim.day_end:  # play the day again
-        S.update(sim=new_sim(), plan={}, plan_at=None, baseline={}, impact={}, hist={}, dr=[])
+        S.update(sim=new_sim(), plan={}, plan_at=None, baseline={}, impact={}, hist={}, dr=[], jump_to=None)
         await event("day_reset", {"day_start": S["sim"].now})
 
 
 async def control_loop():
     while True:
-        await asyncio.sleep(60 / SPEED)
         try:
             await step()
         except Exception as e:  # ponytail: never let one bad tick kill the day
             print("step failed:", repr(e))
+        # /demo/jump sets jump_to: run sim-minutes back to back until we get there. At real time the wait between
+        # minutes is 60 s, so sleep in short slices and leave early when a jump comes in.
+        jumping = lambda: S.get("jump_to") and S["sim"].now < S["jump_to"]
+        due = time.monotonic() + 60 / SPEED
+        while not jumping() and (left := due - time.monotonic()) > 0:
+            await asyncio.sleep(min(left, 0.25))
+        if jumping():
+            await asyncio.sleep(0)  # yield so frames still go out mid-jump
 
 
 def session_out(s):
@@ -340,7 +349,7 @@ async def lifespan(app):
     S.update(site=json.load(open("data/site.json")), signal=json.load(open("data/signal.json")),
              tariff=json.load(open("data/tariff.json")), plan={}, plan_at=None, baseline={}, impact={}, hist={}, mode="live",
              ladder={"live": True, "cached": True, "tariff": True, "deadline": True}, live_lost_at=None,
-             last_solve_at=None, dr=[], clients=set(), next_id=1000, events=deque(maxlen=20))
+             last_solve_at=None, dr=[], clients=set(), next_id=1000, events=deque(maxlen=20), jump_to=None)
     if os.environ.get("OCPP") == "1":
         from . import ocpp_gateway
         S["connector_cls"] = ocpp_gateway.OcppConnector
@@ -712,3 +721,17 @@ async def demo_signal_outage(body: OutageIn = OutageIn()):
               "cache_expires_at": (S["live_lost_at"] + timedelta(hours=6)).isoformat() if S["live_lost_at"] else None}
     await event("mode", detail)
     return DemoOut(changed=f"fail-safe mode {before} -> {S['mode']}", detail=detail)
+
+
+@app.post("/demo/jump", response_model=DemoOut, dependencies=OPS)
+async def demo_jump(body: JumpIn):
+    """Fast-forward the sim clock to HH:MM today. The control loop plays every minute in between (plans, meters,
+    events all still happen), just without waiting; nothing is skipped, so the ledger stays honest."""
+    sim = S["sim"]
+    to = sim.now.replace(hour=body.hour, minute=body.minute, second=0, microsecond=0)
+    if to <= sim.now:
+        raise HTTPException(409, f"it is already {sim.now:%H:%M}; can only jump forward today")
+    S["jump_to"] = to
+    detail = {"from": sim.now.isoformat(), "to": to.isoformat(), "minutes": int((to - sim.now).total_seconds() // 60)}
+    await event("demo", {"what": f"fast-forward to {to:%H:%M}", **detail})
+    return DemoOut(changed=f"fast-forwarding {sim.now:%H:%M} -> {to:%H:%M}", detail=detail)
