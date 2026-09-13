@@ -383,7 +383,8 @@ async def create_session(body: SessionIn):
     c = sim.connectors.get(body.connector_id)
     if not c:
         raise HTTPException(404, "no such connector")
-    if body.departure_at <= sim.now:
+    boosted = bool(c.session and c.session["boost"])  # a boosted car's deadline is "now": a re-POST (kWh update) must not trip the check
+    if body.departure_at <= sim.now and not boosted:
         raise HTTPException(400, f"departure_at must be after sim time {sim.now.isoformat()}")
     v = body.vehicle
     if v and v.battery_kwh and body.soc_now is not None:  # solutions.md §11: the form beats a typed number
@@ -394,7 +395,8 @@ async def create_session(body: SessionIn):
         kwh, conf = need_estimate(c.id)
     if c.session:
         s = c.session
-        s["user_stated_departure"] = body.departure_at
+        if not boosted:  # boost is one-way for the session; only the need can still change
+            s["user_stated_departure"] = body.departure_at
         if body.kwh_needed or (v and v.battery_kwh and body.soc_now is not None):
             s["kwh_needed"], s["need_confidence"] = max(kwh, s["kwh_delivered"]), conf
         name = "deadline"

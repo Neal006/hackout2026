@@ -897,6 +897,63 @@
      }
     }
    }
+  },
+  "/demo/jump": {
+   "post": {
+    "summary": "Demo Jump",
+    "description": "Fast-forward the sim clock to HH:MM today. The control loop plays every minute in between (plans, meters,\nevents all still happen), just without waiting; nothing is skipped, so the ledger stays honest.",
+    "operationId": "demo_jump_demo_jump_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JumpIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1170,6 +1227,28 @@
      "saved_kgco2"
     ],
     "title": "ImpactOut"
+   },
+   "JumpIn": {
+    "properties": {
+     "hour": {
+      "type": "integer",
+      "maximum": 23.0,
+      "minimum": 0.0,
+      "title": "Hour"
+     },
+     "minute": {
+      "type": "integer",
+      "maximum": 59.0,
+      "minimum": 0.0,
+      "title": "Minute",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "required": [
+     "hour"
+    ],
+    "title": "JumpIn"
    },
    "LiveOut": {
     "properties": {
