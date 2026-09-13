@@ -53,6 +53,65 @@
     "boost": {
      "title": "Boost",
      "type": "boolean"
+    },
+    "urgency": {
+     "anyOf": [
+      {
+       "enum": [
+        "now",
+        "soon",
+        "priority"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Urgency"
+    },
+    "idle_min": {
+     "default": 0,
+     "title": "Idle Min",
+     "type": "integer"
+    },
+    "need_confidence": {
+     "anyOf": [
+      {
+       "enum": [
+        "declared",
+        "history",
+        "site"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Need Confidence"
+    },
+    "p_max_kw": {
+     "default": 0.0,
+     "title": "P Max Kw",
+     "type": "number"
+    },
+    "cap_observed": {
+     "default": false,
+     "title": "Cap Observed",
+     "type": "boolean"
+    },
+    "asap": {
+     "default": false,
+     "title": "Asap",
+     "type": "boolean"
+    },
+    "move_by": {
+     "default": false,
+     "title": "Move By",
+     "type": "boolean"
     }
    },
    "required": [
@@ -113,6 +172,10 @@
       "unplug",
       "deadline",
       "boost",
+      "urgency",
+      "done",
+      "cap_observed",
+      "move_by",
       "dr",
       "demo",
       "mode",
@@ -177,6 +240,11 @@
      },
      "title": "Connectors",
      "type": "array"
+    },
+    "waiting": {
+     "default": 0,
+     "title": "Waiting",
+     "type": "integer"
     }
    },
    "required": [

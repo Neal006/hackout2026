@@ -7,17 +7,20 @@ import contextlib
 import json
 import os
 import random
+import statistics
+from collections import deque
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import TypeAdapter
 
-from . import db, scheduler, seed
-from .models import (WS_FRAMES, ConnectorMeter, ConnectorPlan, DemoOut, DrEvent, EventMsg, FlexHour, ImpactOut,
+from . import assist, db, scheduler, seed
+from .models import (AssistIn, AssistOut, WS_FRAMES, ConnectorMeter, ConnectorPlan, DemoOut, DrEvent, EventMsg, FlexHour, ImpactOut,
                      LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, PricePreview, PriceTier, SessionIn, SessionOut,
-                     SignalHour, StatusOut)
-from .sim import SLOT, SPEED, Connector, Sim, load_sessions
+                     SignalHour, StatusOut, UrgencyIn)
+from .sim import SLOT, SPEED, Connector, Sim, load_sessions, safe_share_kw
 
 S = {}  # site, signal, tariff, sim, plan, plan_at, baseline, impact, mode, ladder, live_lost_at, last_solve_at, dr, clients, next_id
 
@@ -51,10 +54,92 @@ def pick_mode(now):
     return "full"
 
 
+URGENCY_MIN = timedelta(minutes=15)  # "soon" closer than this is "now": nothing can be scheduled in under 15 min
+PRIORITY = {"floor_alpha": 0.9, "priority": 2.0}  # business.md §4b low band: floor 90 % pro-rata, gives way last
+
+
+OBS_MIN = 5          # observation guard: minutes at a limit before the meter is believed over the form
+OBS_FRAC = 0.8       # ... when the car draws less than this share of its limit
+OBS_MARGIN = 1.05    # the new planning cap: metered kW plus a little, so a warming battery can still climb
+
+
+def car_kw(c):
+    """What the brain plans with for this car: the bay's limit, capped by the vehicle form or the observation guard."""
+    return min(c.p_max_kw, c.session.get("max_kw") or c.p_max_kw)
+
+
 def car(c):
     s = c.session
     return {"connector_id": c.id, "arrival": s["arrival"], "departure": s["user_stated_departure"],
-            "kwh_needed": s["kwh_needed"], "kwh_delivered": s["kwh_delivered"], "p_max_kw": c.p_max_kw, "boost": s["boost"]}
+            "kwh_needed": s["kwh_needed"], "kwh_delivered": s["kwh_delivered"], "p_max_kw": car_kw(c),
+            "boost": s["boost"] or c.id in S["site"].get("connectors_asap", []),  # fleet bays are never deferred
+            **(PRIORITY if s.get("urgency") == "priority" else {})}
+
+
+def need_estimate(connector_id):
+    """solutions.md §11: no form and no number from the driver -> this bay's history, else the site's median."""
+    ss = S["sim"].sessions.values()
+    here = [s["kwh_needed"] for s in ss if s["connector_id"] == connector_id and s["status"] == "ended"]
+    if here:
+        return round(statistics.median(here), 1), "history"
+    return round(statistics.median(s["kwh_needed"] for s in ss), 1), "site"
+
+
+def observe_caps():
+    """The observation guard (solutions.md §10): a car that has drawn < OBS_FRAC of its limit for OBS_MIN minutes cannot
+    take what we plan for it (PHEV, cold battery, wrong form). Believe the meter: cap it at metered * OBS_MARGIN for the
+    rest of the session. Skipped once the car is tapering (> 80 % of its need), which is not a cap but physics."""
+    out = []
+    for c in S["sim"].active():
+        s = c.session
+        slow = s["status"] == "charging" and c.kw > 0 and c.kw < OBS_FRAC * c.limit_kw and s["kwh_delivered"] < 0.8 * s["kwh_needed"]
+        c.slow_min = c.slow_min + 1 if slow and not s.get("cap_observed") else 0
+        if c.slow_min >= OBS_MIN:
+            s["max_kw"], s["cap_observed"], c.slow_min = round(c.kw * OBS_MARGIN, 2), True, 0
+            out.append({"name": "cap_observed", "session_id": s["id"], "connector_id": c.id, "limit_kw": round(c.limit_kw, 2),
+                        "metered_kw": round(c.kw, 2), "max_kw": s["max_kw"]})
+    return out
+
+
+def move_by():
+    """solutions.md §3: cars are waiting, so the plugged cars with the most slack get a move-by time: deadline = now +
+    time to finish at full power. Never a car with < 1 h slack, never an urgent one, one tightened car per waiting car."""
+    sim = S["sim"]
+    now = sim.now
+    need = len(sim.waiting) - sum(1 for c in sim.active() if c.session.get("move_by"))
+    out = []
+    if need <= 0:
+        return out
+
+    def slack(c):
+        s = c.session
+        return (s["user_stated_departure"] - now).total_seconds() / 3600 - max(0.0, s["kwh_needed"] - s["kwh_delivered"]) / car_kw(c)
+
+    cands = sorted((c for c in sim.active() if c.status == "charging" and not c.session.get("urgent") and not c.session.get("move_by")
+                    and slack(c) >= 1.0), key=slack, reverse=True)
+    for c in cands[:need]:
+        s = c.session
+        was = s["user_stated_departure"]
+        finish = now + timedelta(hours=max(0.0, s["kwh_needed"] - s["kwh_delivered"]) / car_kw(c)) + SLOT
+        s["user_stated_departure"], s["move_by"] = finish.replace(second=0, microsecond=0), True
+        out.append({"name": "move_by", "session_id": s["id"], "connector_id": c.id, "deadline_was": was.isoformat(),
+                    "move_by": s["user_stated_departure"].isoformat(), "waiting": len(sim.waiting)})
+    return out
+
+
+def site_rate():
+    """R: what the driver pays per kWh today. 0 = free workplace charging (business.md §0b)."""
+    return float(S["site"].get("employee_rate_usd_per_kwh", 0.0))
+
+
+def session_price(s, slack):
+    """business.md §7b: R minus the driver's share of this session's measured saving. The receipt's saving covers the
+    planned series (metered + plan ahead), so the matching energy is the need while charging and the delivered kWh
+    once ended (an early leaver shifted less). Any urgency band pays exactly R."""
+    imp = S["impact"].get(s["id"], {"saved_usd": 0.0})
+    kwh = s["kwh_delivered"] if s["status"] == "ended" else s["kwh_needed"]
+    return scheduler.price(slack, r=site_rate(), saving_usd=imp["saved_usd"], kwh=kwh,
+                           alpha=S["site"].get("driver_share", 0.5), urgent=bool(s.get("urgent")))
 
 
 def new_sim():
@@ -72,7 +157,19 @@ async def broadcast(msg):
 
 
 async def event(name, detail):
-    await broadcast(EventMsg(sim_time=S["sim"].now, name=name, detail=detail))
+    msg = EventMsg(sim_time=S["sim"].now, name=name, detail=detail)
+    S.setdefault("events", deque(maxlen=20)).append(msg.model_dump(mode="json"))  # the assistant's "last 20 events"
+    await broadcast(msg)
+
+
+def ops_auth(authorization: str | None = Header(None)):
+    """Bearer token for operator endpoints when OPS_TOKEN is set; unset = open (it is a demo)."""
+    tok = os.environ.get("OPS_TOKEN")
+    if tok and authorization != f"Bearer {tok}":
+        raise HTTPException(401, "operator token required")
+
+
+OPS = [Depends(ops_auth)]
 
 
 def session_impact(h, remaining=()):
@@ -85,7 +182,8 @@ def session_impact(h, remaining=()):
     series = metered + list(remaining)[:288 - full]
     signal = {"moer": aligned(S["signal"]["moer"], h["start"]), "kind": S["signal"]["kind"]}
     tariff = dict(S["tariff"], price_per_kwh=aligned(S["tariff"]["price_per_kwh"], h["start"]))
-    return scheduler.impact({"s": series}, {"s": h["baseline"]}, signal, tariff)
+    signal["health_damage"] = aligned(S["signal"]["health_damage"], h["start"]) if S["signal"].get("health_damage") else None
+    return scheduler.impact({"s": series}, {"s": h["baseline"]}, signal, tariff, health=bool(S["signal"].get("health_damage")))
 
 
 def meter_history():
@@ -104,7 +202,7 @@ def apply_limits():
     k = slot_of(sim.now) - slot_of(S["plan_at"]) if S["plan_at"] else -1
     for c in sim.active():
         kw = S["plan"].get(c.id)
-        c.set_limit(kw[k] if kw and 0 <= k < len(kw) else c.p_max_kw)
+        c.set_limit(kw[k] if kw and 0 <= k < len(kw) else c.safe_kw)  # no plan for this car = the static share
 
 
 def plan_msg(reason):
@@ -122,8 +220,10 @@ async def resolve(reason):
     sim = S["sim"]
     now = sim.now
     mode = S["mode"] = pick_mode(now)
+    for e in move_by():
+        await event("move_by", e)
     cars = [car(c) for c in sim.active() if c.session["status"] == "charging"]
-    site = {"feed_kw": S["site"]["feed_kw"], "block_kw": S["site"]["block_kw"],
+    site = {"feed_kw": S["site"]["feed_kw"], "block_kw": S["site"]["block_kw"], "safe_share_kw": safe_share_kw(S["site"]),
             "building_load_kw": aligned(S["site"]["building_load_kw"], now)}
     t0 = slot_start(now)
     for dr in S["dr"]:  # a DR event is just less headroom in those slots
@@ -133,8 +233,8 @@ async def resolve(reason):
     sig = S["signal"]
     signal = {"moer": aligned(sig["moer"], now), "kind": sig["kind"]} if mode in ("live", "cached") else {"moer": [], "kind": None}
     tariff = dict(S["tariff"], price_per_kwh=aligned(S["tariff"]["price_per_kwh"], now) if mode != "deadline" else [])
-    if mode == "full":
-        plan = baseline = {c["connector_id"]: [c["p_max_kw"]] * 288 for c in cars}
+    if mode == "full":  # nothing to plan with: every charger on its static share, which is what it would do without us
+        plan = baseline = {c["connector_id"]: [min(site["safe_share_kw"], c["p_max_kw"])] * 288 for c in cars}
     else:
         plan = await asyncio.to_thread(scheduler.solve, cars, site, signal, tariff, now)
         baseline = await asyncio.to_thread(scheduler.solve, [dict(c, departure=now) for c in cars], site, signal, tariff, now)
@@ -154,22 +254,28 @@ async def resolve(reason):
 def meter_msg():
     sim = S["sim"]
     conns = []
+    asap = S["site"].get("connectors_asap", [])
     for c in sim.connectors.values():
         s = c.session
         conns.append(ConnectorMeter(
             connector_id=c.id, session_id=s["id"] if s else None,
             status=c.status if s else "idle", kw=round(c.kw, 2),
             kwh_delivered=round(s["kwh_delivered"], 3) if s else 0, kwh_needed=s["kwh_needed"] if s else 0,
-            departure_at=s["user_stated_departure"] if s else None, boost=s["boost"] if s else False))
+            departure_at=s["user_stated_departure"] if s else None, boost=s["boost"] if s else False,
+            urgency=s.get("urgency") if s else None,
+            idle_min=int((sim.now - s["idle_since"]).total_seconds() // 60) if s and s.get("idle_since") else 0,
+            need_confidence=s.get("need_confidence") if s else None, p_max_kw=car_kw(c) if s else c.p_max_kw,
+            cap_observed=bool(s.get("cap_observed")) if s else False, asap=c.id in asap,
+            move_by=bool(s.get("move_by")) if s else False))
     return MeterMsg(sim_time=sim.now, mode=S["mode"], site_kw=round(sum(c.kw for c in sim.connectors.values()), 2),
                     building_load_kw=S["site"]["building_load_kw"][slot_of(sim.now)], feed_kw=S["site"]["feed_kw"],
-                    connectors=conns)
+                    connectors=conns, waiting=len(sim.waiting))
 
 
 async def step():
     """One sim-minute: draw power, handle plug-ins/unplugs, re-solve on event or 5-min boundary, publish meters."""
     sim = S["sim"]
-    events = sim.tick(1)
+    events = sim.tick(1) + observe_caps()
     meter_history()
     for e in events:
         await event(e["name"], e)
@@ -206,12 +312,14 @@ def session_out(s):
             eta = h0 + k * SLOT
             break
         acc += v * 5 / 60
-    p_max = sim.connectors[s["connector_id"]].p_max_kw
+    c = sim.connectors.get(s["connector_id"])
+    p_max = car_kw(c) if c and c.session is s else min(sim.connectors[s["connector_id"]].p_max_kw, s.get("max_kw") or 99)
     slack = 0 if s["boost"] else (s["user_stated_departure"] - now).total_seconds() / 3600 - max(0, s["kwh_needed"] - s["kwh_delivered"]) / p_max
     return SessionOut(session_id=s["id"], connector_id=s["connector_id"], status=s["status"],
                       plan=PlanWindow(start=h0 + on[0] * SLOT if on else None, end=h0 + (on[-1] + 1) * SLOT if on else None,
                                       ready_by=s["user_stated_departure"]),
-                      eta=eta, price=scheduler.price(slack), boost=s["boost"])
+                      eta=eta, price=session_price(s, slack), boost=s["boost"], urgency=s.get("urgency"),
+                      kwh_needed=s["kwh_needed"], need_confidence=s.get("need_confidence"), max_kw=s.get("max_kw"))
 
 
 def get_session(sid):
@@ -232,11 +340,11 @@ async def lifespan(app):
     S.update(site=json.load(open("data/site.json")), signal=json.load(open("data/signal.json")),
              tariff=json.load(open("data/tariff.json")), plan={}, plan_at=None, baseline={}, impact={}, hist={}, mode="live",
              ladder={"live": True, "cached": True, "tariff": True, "deadline": True}, live_lost_at=None,
-             last_solve_at=None, dr=[], clients=set(), next_id=1000)
+             last_solve_at=None, dr=[], clients=set(), next_id=1000, events=deque(maxlen=20))
     if os.environ.get("OCPP") == "1":
         from . import ocpp_gateway
         S["connector_cls"] = ocpp_gateway.OcppConnector
-        await ocpp_gateway.start(S["site"]["connectors"])
+        await ocpp_gateway.start(S["site"]["connectors"], safe_share_kw(S["site"]))
     S["sim"] = new_sim()
     await db.connect()
     await seed.load()
@@ -266,35 +374,65 @@ async def create_session(body: SessionIn):
         raise HTTPException(404, "no such connector")
     if body.departure_at <= sim.now:
         raise HTTPException(400, f"departure_at must be after sim time {sim.now.isoformat()}")
+    v = body.vehicle
+    if v and v.battery_kwh and body.soc_now is not None:  # solutions.md §11: the form beats a typed number
+        kwh, conf = round(max(0.0, body.target_soc - body.soc_now) * v.battery_kwh, 2), "declared"
+    elif body.kwh_needed:
+        kwh, conf = body.kwh_needed, "declared"
+    else:
+        kwh, conf = need_estimate(c.id)
     if c.session:
         s = c.session
         s["user_stated_departure"] = body.departure_at
-        if body.kwh_needed:
-            s["kwh_needed"] = max(body.kwh_needed, s["kwh_delivered"])
+        if body.kwh_needed or (v and v.battery_kwh and body.soc_now is not None):
+            s["kwh_needed"], s["need_confidence"] = max(kwh, s["kwh_delivered"]), conf
         name = "deadline"
     else:
         S["next_id"] += 1
         s = {"id": S["next_id"], "connector_id": c.id, "arrival": sim.now, "departure": body.departure_at,
-             "user_stated_departure": body.departure_at, "kwh_needed": body.kwh_needed or 8.0,
+             "user_stated_departure": body.departure_at, "kwh_needed": kwh, "need_confidence": conf,
              "kwh_delivered": 0.0, "boost": False, "status": "pending", "ended_at": None}
         sim.arrive(s)
         name = "plug_in"
+    if v:
+        s["vehicle"] = v.model_dump(exclude_none=True)
+        if v.max_kw:
+            s["max_kw"] = s["car_kw"] = v.max_kw  # the planner's belief and, in the sim, the physical truth
     await event(name, {"session_id": s["id"], "connector_id": c.id, "departure_at": body.departure_at.isoformat()})
     await db.save_session(s)
     await resolve(name)
     return session_out(s)
 
 
-@app.post("/sessions/{sid}/boost", response_model=SessionOut)
-async def boost(sid: int):
+@app.post("/sessions/{sid}/urgency", response_model=SessionOut)
+async def urgency(sid: int, body: UrgencyIn):
+    """business.md §4b. now: deadline = now, full power (the ASAP path). soon: deadline = leave_at, the LP picks the
+    cleanest slots inside the window (< 15 min away = now). priority: deadline unchanged, floor 90 % pro-rata and the
+    shortfall weight doubled. Every band marks the session urgent, so price() returns exactly R."""
     s = get_session(sid)
     if s["status"] not in ("charging", "done"):
         raise HTTPException(409, f"session is {s['status']}")
-    s["boost"] = True
-    await event("boost", {"session_id": sid, "connector_id": s["connector_id"]})
+    sim = S["sim"]
+    level, leave_at = body.level, body.leave_at
+    if level == "soon" and (leave_at is None or leave_at < sim.now + URGENCY_MIN):
+        level = "now"
+    if level == "now":
+        s["boost"], s["user_stated_departure"] = True, sim.now  # the car leaves when it leaves; charge flat out until then
+    elif level == "soon":
+        s["user_stated_departure"] = s["departure"] = leave_at  # the driver said when they leave: the sim believes them
+    s["urgent"], s["urgency"] = True, level
+    await event("boost" if level == "now" else "urgency",  # "now" keeps the event name both front-ends already handle
+                {"session_id": sid, "connector_id": s["connector_id"], "level": level, "requested": body.level,
+                 "leave_at": s["user_stated_departure"].isoformat()})
     await db.save_session(s)
-    await resolve("boost")
+    await resolve(f"urgency:{level}")
     return session_out(s)
+
+
+@app.post("/sessions/{sid}/boost", response_model=SessionOut)
+async def boost(sid: int):
+    """Alias for urgency "now" (WattWise's "Charge now" button)."""
+    return await urgency(sid, UrgencyIn(level="now"))
 
 
 @app.get("/sessions/{sid}/live", response_model=LiveOut)
@@ -325,10 +463,51 @@ def site_impact(site_id: str, from_: datetime | None = Query(None, alias="from")
     ss = [s for s in sim.sessions.values() if lo <= s["arrival"] < hi and s["status"] != "pending"]
     imps = [S["impact"].get(s["id"], {"saved_usd": 0.0, "saved_kgco2": 0.0}) for s in ss]
     actual, base = site_peaks()
+    ledger = hourly_ledger(lo, hi)
+    kwh = sum(r["kwh"] for r in ledger)
     return ImpactOut(from_=lo, to=hi, sessions=len(ss), kwh=round(sum(s["kwh_delivered"] for s in ss), 2),
                      saved_usd=round(sum(i["saved_usd"] for i in imps), 2),
                      saved_kgco2=round(sum(i["saved_kgco2"] for i in imps), 2),
-                     peak_kw=actual, baseline_peak_kw=base)
+                     peak_kw=actual, baseline_peak_kw=base,
+                     renewable_share=round(sum(r["kwh"] for r in ledger if r["gco2_per_kwh"] == 0) / kwh, 4) if kwh else 0.0,
+                     health_usd=None if S["signal"].get("health_damage") is None else round(sum(
+                         S["impact"].get(s["id"], {}).get("health_usd") or 0.0 for s in ss), 2))
+
+
+def hourly_ledger(lo, hi):
+    """solutions.md §12: the hourly record behind every carbon claim, from metered per-minute kW and the day's signal.
+    Columns: hour, kWh, gCO2/kWh (hourly mean of the signal), kgCO2 (per-slot, exact), signal kind and source."""
+    moer, kind, src = S["signal"]["moer"], S["signal"]["kind"], S["signal"].get("source", "")
+    kwh = [0.0] * 288
+    for h in S.get("hist", {}).values():
+        if not (lo <= h["start"] < hi):
+            continue
+        k0 = slot_of(h["start"])
+        for i, kw in enumerate(h["kw_min"]):
+            k = k0 + (h["start"].minute % 5 + i) // 5  # minute i of a session that began mid-slot lands in its true slot
+            if k < 288:
+                kwh[k] += kw / 60
+    out = []
+    for hour in range(24):
+        e = sum(kwh[hour * 12:(hour + 1) * 12])
+        kg = sum(kwh[k] * moer[k] / 1000 for k in range(hour * 12, (hour + 1) * 12))
+        out.append({"hour": hour, "kwh": round(e, 3), "gco2_per_kwh": round(sum(moer[hour * 12:(hour + 1) * 12]) / 12, 1),
+                    "kgco2": round(kg, 4), "signal_kind": kind, "signal_source": src})
+    return out
+
+
+@app.get("/sites/{site_id}/impact.csv", response_class=PlainTextResponse)
+def site_impact_csv(site_id: str, from_: datetime | None = Query(None, alias="from"), to: datetime | None = None):
+    """The audit-ready ledger (solutions.md §12): LCFS takes the kWh column today; an hourly-EAC registry takes the rest."""
+    check_site(site_id)
+    sim = S["sim"]
+    lo, hi = from_ or sim.day_end - timedelta(days=1), to or sim.day_end
+    rows = ["day,hour,kwh,gco2_per_kwh,kgco2,signal_kind,signal_source"]
+    day = lo.date().isoformat()
+    for r in hourly_ledger(lo, hi):
+        rows.append(f"{day},{r['hour']:02d},{r['kwh']:.3f},{r['gco2_per_kwh']},{r['kgco2']:.4f},{r['signal_kind']},{r['signal_source']}")
+    return PlainTextResponse("\n".join(rows) + "\n", media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="noonshift-{site_id}-{day}.csv"'})
 
 
 def site_peaks():
@@ -339,7 +518,7 @@ def site_peaks():
     for h in S.get("hist", {}).values():
         k0 = slot_of(h["start"])
         for i, kw in enumerate(h["kw_min"]):  # per sim-minute since plug-in
-            k = k0 + i // 5
+            k = k0 + (h["start"].minute % 5 + i) // 5  # minute i of a session that began mid-slot lands in its true slot
             if k < 288:
                 metered[k] += kw / 5
         for i, kw in enumerate(h["baseline"]):
@@ -353,18 +532,29 @@ def site_peaks():
 @app.get("/sites/{site_id}/status", response_model=StatusOut)
 def site_status(site_id: str):
     check_site(site_id)
+    site = S["site"]
     return StatusOut(mode=S["mode"], last_solve_at=S["last_solve_at"],
                      connectors_active=sum(c.status == "charging" for c in S["sim"].active()),
-                     feed_kw=S["site"]["feed_kw"], block_kw=S["site"]["block_kw"], sim_time=S["sim"].now)
+                     feed_kw=site["feed_kw"], block_kw=site["block_kw"], sim_time=S["sim"].now,
+                     safe_share_kw=safe_share_kw(site), waiting=len(S["sim"].waiting),
+                     connectors_asap=site.get("connectors_asap", []), n_connectors=len(site["connectors"]), p_max_kw=site["p_max_kw"],
+                     contracted_peak_kw=site.get("contracted_peak_kw") or site["feed_kw"], package=site.get("package", "pilot"),
+                     employee_rate_usd_per_kwh=site_rate(), driver_share=site.get("driver_share", 0.5),
+                     noonshift_share=site.get("noonshift_share", 0.2), signal_kind=S["signal"].get("kind"),
+                     signal_source=S["signal"].get("source"), tariff_name=S["tariff"].get("name"), ladder=S["ladder"])
 
 
 @app.get("/price", response_model=PricePreview)
 def price_preview(departure_at: datetime, kwh_needed: float = 8.0):
-    """Deadline sets the price: preview the tier for a ready-by time before the driver commits."""
-    slack = (departure_at - S["sim"].now).total_seconds() / 3600 - kwh_needed / S["site"]["p_max_kw"]
-    tiers = [PriceTier(tier=t, min_slack_hours=m, usd_per_kwh=scheduler.price(m)["usd_per_kwh"])
-             for t, m in (("green", 4.0), ("standard", 1.0), ("boost", 0.0))]
-    return PricePreview(slack_hours=round(slack, 2), price=scheduler.price(slack), tiers=tiers)
+    """What a ready-by would cost before plugging in. No session yet, so the discount is today's site saving rate so far
+    (sum of measured session savings over delivered kWh) applied to this need: an estimate, settled on the receipt."""
+    sim = S["sim"]
+    slack = (departure_at - sim.now).total_seconds() / 3600 - kwh_needed / S["site"]["p_max_kw"]
+    ended = [s for s in sim.sessions.values() if s["status"] != "pending" and s["kwh_delivered"] > 0]
+    rate = sum(S["impact"].get(s["id"], {"saved_usd": 0.0})["saved_usd"] for s in ended) / sum(s["kwh_delivered"] for s in ended) if ended else 0.0
+    quote = lambda h: scheduler.price(h, r=site_rate(), saving_usd=rate * kwh_needed, kwh=kwh_needed, alpha=S["site"].get("driver_share", 0.5))
+    tiers = [PriceTier(tier=t, min_slack_hours=m, usd_per_kwh=quote(m)["usd_per_kwh"]) for t, m in (("green", 4.0), ("standard", 1.0), ("boost", 0.0))]
+    return PricePreview(slack_hours=round(slack, 2), price=quote(slack), tiers=tiers)
 
 
 @app.get("/grid/signal", response_model=list[SignalHour])
@@ -402,6 +592,23 @@ async def openadr_event(ev: DrEvent):
     return {"accepted": True, "events": len(S["dr"]), "mode": S["mode"]}
 
 
+@app.post("/assist", response_model=AssistOut, dependencies=OPS)
+def assist_ask(body: AssistIn, request: Request):
+    """The operator assistant: explains and suggests from live state + repo docs; never acts. Falls back to templates
+    without a key; 429 with Retry-After when the model or the per-IP limit (10/min) says so."""
+    if not assist.allow(request.client.host if request.client else "?"):
+        return JSONResponse({"detail": "10 questions per minute; try again shortly."}, status_code=429, headers={"Retry-After": "30"})
+    payload, status = assist.ask(body.question, [t.model_dump() for t in body.history], body.page)
+    if status != 200:
+        return JSONResponse({"detail": payload["detail"]}, status_code=status, headers={"Retry-After": str(payload.get("retry_after", 20))})
+    return AssistOut(**payload)
+
+
+@app.get("/assist/suggestions", response_model=list[str], dependencies=OPS)
+def assist_suggestions():
+    return assist.suggestions(assist.snapshot())
+
+
 @app.websocket("/ws")
 async def ws(sock: WebSocket):
     await sock.accept()
@@ -422,7 +629,7 @@ def charging_sessions():
     return [c.session for c in S["sim"].active() if c.session["status"] == "charging"]
 
 
-@app.post("/demo/early_unplug", response_model=DemoOut)
+@app.post("/demo/early_unplug", response_model=DemoOut, dependencies=OPS)
 async def demo_early_unplug():
     """Tom: told us 17:00, leaves now. Picks the charging car with the latest deadline and least energy."""
     sim = S["sim"]
@@ -442,7 +649,7 @@ async def demo_early_unplug():
     return DemoOut(changed="session unplugged early; plan re-solved without it", detail=detail)
 
 
-@app.post("/demo/boost", response_model=DemoOut)
+@app.post("/demo/boost", response_model=DemoOut, dependencies=OPS)
 async def demo_boost():
     """Sofia: 10:30 site visit. Picks the least-charged car, moves its deadline to now+1h with Boost."""
     sim = S["sim"]
@@ -451,7 +658,8 @@ async def demo_boost():
         raise HTTPException(409, "nobody to boost")
     s = cands[0]
     was = s["user_stated_departure"]
-    s["boost"] = True
+    s["boost"] = s["urgent"] = True
+    s["urgency"] = "now"
     s["user_stated_departure"] = s["departure"] = sim.now + timedelta(hours=1)
     await event("boost", {"session_id": s["id"], "connector_id": s["connector_id"]})
     await db.save_session(s)
@@ -463,7 +671,7 @@ async def demo_boost():
                            "plan": out.plan.model_dump(mode="json")})
 
 
-@app.post("/demo/oversubscribe", response_model=DemoOut)
+@app.post("/demo/oversubscribe", response_model=DemoOut, dependencies=OPS)
 async def demo_oversubscribe():
     """+20 late arrivals, 2 h deadlines, on the spare connectors. More demand than the feed can serve."""
     sim = S["sim"]
@@ -474,11 +682,11 @@ async def demo_oversubscribe():
         s = {"id": S["next_id"], "connector_id": None, "arrival": sim.now, "departure": sim.now + timedelta(hours=2),
              "user_stated_departure": sim.now + timedelta(hours=2), "kwh_needed": round(rnd.uniform(8, 10), 1),
              "kwh_delivered": 0.0, "boost": False, "status": "pending", "ended_at": None}
-        if sim.arrive(s):
-            added.append(s["id"])
-            await db.save_session(s)
+        sim.arrive(s)
+        added.append(s["id"])
+        await db.save_session(s)
     active = charging_sessions()
-    detail = {"added": len(added), "session_ids": added, "connectors_active": len(active),
+    detail = {"added": len(added), "session_ids": added, "connectors_active": len(active), "waiting": len(sim.waiting),
               "demand_kw_if_all_full_power": len(active) * S["site"]["p_max_kw"], "feed_kw": S["site"]["feed_kw"],
               "kwh_due_in_2h": round(sum(s["kwh_needed"] - s["kwh_delivered"] for s in active if s["user_stated_departure"] <= sim.now + timedelta(hours=2)), 1)}
     await event("demo", {"what": "oversubscribe", **detail})
@@ -486,7 +694,7 @@ async def demo_oversubscribe():
     return DemoOut(changed=f"{len(added)} cars plugged in with 2 h deadlines; plan re-solved (elastic shortfall)", detail=detail)
 
 
-@app.post("/demo/signal_outage", response_model=DemoOut)
+@app.post("/demo/signal_outage", response_model=DemoOut, dependencies=OPS)
 async def demo_signal_outage(body: OutageIn = OutageIn()):
     """Knock rungs out of the fail-safe ladder (default: the live signal) or restore all."""
     sim = S["sim"]

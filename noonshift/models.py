@@ -9,10 +9,31 @@ SessionStatus = Literal["pending", "charging", "done", "ended"]
 
 
 # ---- REST ----
+class Vehicle(BaseModel):
+    """What the driver tells us about the car. All optional: the brain plans with the bay's limit when it knows nothing."""
+    model: str | None = None
+    battery_kwh: float | None = Field(None, gt=0)
+    max_kw: float | None = Field(None, gt=0)  # the car's own AC limit (3.7 / 7 / 11 kW are common)
+
+
+NeedConfidence = Literal["declared", "history", "site"]  # solutions.md §11: where kwh_needed came from
+
+
 class SessionIn(BaseModel):
     connector_id: str
     departure_at: datetime
     kwh_needed: float | None = None
+    vehicle: Vehicle | None = None
+    soc_now: float | None = Field(None, ge=0, le=1)  # with vehicle.battery_kwh: kwh_needed = (target - now) * battery
+    target_soc: float = Field(1.0, gt=0, le=1)
+
+
+Urgency = Literal["now", "soon", "priority"]  # business.md §4b: three bands, one price (R)
+
+
+class UrgencyIn(BaseModel):
+    level: Urgency
+    leave_at: datetime | None = None  # "soon" only; < 15 min away is treated as "now"
 
 
 class Price(BaseModel):
@@ -34,6 +55,10 @@ class SessionOut(BaseModel):
     eta: datetime | None  # when the plan reaches kwh_needed
     price: Price
     boost: bool
+    urgency: Urgency | None = None  # set by POST /sessions/{id}/urgency (or /boost = "now"); price is then exactly R
+    kwh_needed: float = 0.0
+    need_confidence: NeedConfidence | None = None
+    max_kw: float | None = None  # what the brain plans with: min(bay, car), corrected by the observation guard
 
 
 class LiveOut(BaseModel):
@@ -56,6 +81,8 @@ class ImpactOut(BaseModel):
     saved_kgco2: float
     peak_kw: float = 0.0  # highest metered site kW (EV + building) so far today
     baseline_peak_kw: float = 0.0  # same, had every car charged at full power from plug-in
+    renewable_share: float = 0.0  # share of delivered kWh in slots where the marginal source was renewable (MOER = 0)
+    health_usd: float | None = None  # metrics.md §4: avoided health damage, when the signal carries an index
     note: str = "estimate vs charge-immediately baseline"
 
 
@@ -66,6 +93,20 @@ class StatusOut(BaseModel):
     feed_kw: float = 0.0
     block_kw: float = 0.0
     sim_time: datetime | None = None
+    safe_share_kw: float = 0.0  # per-connector static share every charger reverts to when the controller is gone
+    waiting: int = 0  # cars that arrived with no free bay
+    connectors_asap: list[str] = []  # fleet bays that are never deferred
+    n_connectors: int = 0
+    p_max_kw: float = 0.0
+    contracted_peak_kw: float = 0.0  # the building's contracted demand; default = feed_kw (Assumption A2)
+    package: Literal["capacity", "clean-hours", "pilot"] = "pilot"  # business.md §9b (Assumption A3)
+    employee_rate_usd_per_kwh: float = 0.0  # R
+    driver_share: float = 0.5  # alpha
+    noonshift_share: float = 0.2  # beta
+    signal_kind: Literal["marginal", "average"] | None = None
+    signal_source: str | None = None
+    tariff_name: str | None = None
+    ladder: dict[str, bool] = {}
 
 
 class PriceTier(BaseModel):
@@ -137,6 +178,13 @@ class ConnectorMeter(BaseModel):
     kwh_needed: float
     departure_at: datetime | None  # what the driver told us
     boost: bool
+    urgency: Urgency | None = None
+    idle_min: int = 0  # minutes since the car was full and still plugged in
+    need_confidence: NeedConfidence | None = None
+    p_max_kw: float = 0.0  # what the brain plans with for this car
+    cap_observed: bool = False  # the meter said the car draws less than we planned; p_max_kw was lowered to match
+    asap: bool = False  # a connectors_asap bay
+    move_by: bool = False  # deadline tightened to make room for a waiting car
 
 
 class MeterMsg(BaseModel):
@@ -147,13 +195,40 @@ class MeterMsg(BaseModel):
     building_load_kw: float
     feed_kw: float
     connectors: list[ConnectorMeter]
+    waiting: int = 0
 
 
 class EventMsg(BaseModel):
     type: Literal["event"] = "event"
     sim_time: datetime
-    name: Literal["plug_in", "unplug", "deadline", "boost", "dr", "demo", "mode", "day_reset"]
+    name: Literal["plug_in", "unplug", "deadline", "boost", "urgency", "done", "cap_observed", "move_by", "dr", "demo", "mode", "day_reset"]
     detail: dict
 
 
 WS_FRAMES = PlanMsg | MeterMsg | EventMsg
+
+
+# ---- operator assistant (WP6) ----
+class Turn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=4000)
+
+
+class AssistIn(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    history: list[Turn] = []
+    page: str = Field("", max_length=200)
+
+
+class AssistAction(BaseModel):
+    label: str
+    path: str
+
+
+class AssistOut(BaseModel):
+    answer: str
+    sources: list[str] = []
+    suggested_actions: list[AssistAction] = []
+    fallback: bool = False   # template answer, no model
+    degraded: bool = False   # model unreachable; template answer
+    usage: dict | None = None
