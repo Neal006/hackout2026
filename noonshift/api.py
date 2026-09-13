@@ -17,7 +17,7 @@ from . import db, scheduler, seed
 from .models import (WS_FRAMES, ConnectorMeter, ConnectorPlan, DemoOut, DrEvent, EventMsg, FlexHour, ImpactOut,
                      LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, PricePreview, PriceTier, SessionIn, SessionOut,
                      SignalHour, StatusOut, UrgencyIn)
-from .sim import SLOT, SPEED, Connector, Sim, load_sessions
+from .sim import SLOT, SPEED, Connector, Sim, load_sessions, safe_share_kw
 
 S = {}  # site, signal, tariff, sim, plan, plan_at, baseline, impact, mode, ladder, live_lost_at, last_solve_at, dr, clients, next_id
 
@@ -124,7 +124,7 @@ def apply_limits():
     k = slot_of(sim.now) - slot_of(S["plan_at"]) if S["plan_at"] else -1
     for c in sim.active():
         kw = S["plan"].get(c.id)
-        c.set_limit(kw[k] if kw and 0 <= k < len(kw) else c.p_max_kw)
+        c.set_limit(kw[k] if kw and 0 <= k < len(kw) else c.safe_kw)  # no plan for this car = the static share
 
 
 def plan_msg(reason):
@@ -143,7 +143,7 @@ async def resolve(reason):
     now = sim.now
     mode = S["mode"] = pick_mode(now)
     cars = [car(c) for c in sim.active() if c.session["status"] == "charging"]
-    site = {"feed_kw": S["site"]["feed_kw"], "block_kw": S["site"]["block_kw"],
+    site = {"feed_kw": S["site"]["feed_kw"], "block_kw": S["site"]["block_kw"], "safe_share_kw": safe_share_kw(S["site"]),
             "building_load_kw": aligned(S["site"]["building_load_kw"], now)}
     t0 = slot_start(now)
     for dr in S["dr"]:  # a DR event is just less headroom in those slots
@@ -153,8 +153,8 @@ async def resolve(reason):
     sig = S["signal"]
     signal = {"moer": aligned(sig["moer"], now), "kind": sig["kind"]} if mode in ("live", "cached") else {"moer": [], "kind": None}
     tariff = dict(S["tariff"], price_per_kwh=aligned(S["tariff"]["price_per_kwh"], now) if mode != "deadline" else [])
-    if mode == "full":
-        plan = baseline = {c["connector_id"]: [c["p_max_kw"]] * 288 for c in cars}
+    if mode == "full":  # nothing to plan with: every charger on its static share, which is what it would do without us
+        plan = baseline = {c["connector_id"]: [min(site["safe_share_kw"], c["p_max_kw"])] * 288 for c in cars}
     else:
         plan = await asyncio.to_thread(scheduler.solve, cars, site, signal, tariff, now)
         baseline = await asyncio.to_thread(scheduler.solve, [dict(c, departure=now) for c in cars], site, signal, tariff, now)
@@ -257,7 +257,7 @@ async def lifespan(app):
     if os.environ.get("OCPP") == "1":
         from . import ocpp_gateway
         S["connector_cls"] = ocpp_gateway.OcppConnector
-        await ocpp_gateway.start(S["site"]["connectors"])
+        await ocpp_gateway.start(S["site"]["connectors"], safe_share_kw(S["site"]))
     S["sim"] = new_sim()
     await db.connect()
     await seed.load()
@@ -395,7 +395,8 @@ def site_status(site_id: str):
     check_site(site_id)
     return StatusOut(mode=S["mode"], last_solve_at=S["last_solve_at"],
                      connectors_active=sum(c.status == "charging" for c in S["sim"].active()),
-                     feed_kw=S["site"]["feed_kw"], block_kw=S["site"]["block_kw"], sim_time=S["sim"].now)
+                     feed_kw=S["site"]["feed_kw"], block_kw=S["site"]["block_kw"], sim_time=S["sim"].now,
+                     safe_share_kw=safe_share_kw(S["site"]))
 
 
 @app.get("/price", response_model=PricePreview)

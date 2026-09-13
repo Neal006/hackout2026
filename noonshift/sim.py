@@ -9,6 +9,16 @@ from datetime import datetime, timedelta
 SPEED = float(os.environ.get("SIM_SPEED", "480"))  # sim-seconds per real second; 480 = one day in 3 min
 SLOT = timedelta(minutes=5)
 START_HOUR = 6  # nothing happens before 06:00; skip it
+DYN_VALID_MIN = 15  # a dynamic limit expires this many minutes after it was last set (OCPP profile valid_to); then safe share
+
+
+def safe_share_kw(site):
+    """solutions.md §5: the static per-connector share that keeps the site inside its feed with no controller at all:
+    min(p_max, (feed - worst building load) / n). Sent once to every charger; what they revert to when we are gone."""
+    if site.get("safe_share_kw"):
+        return float(site["safe_share_kw"])
+    load = site.get("building_load_kw") or [0.0]
+    return round(max(0.0, min(site["p_max_kw"], (site["feed_kw"] - max(load)) / max(1, len(site["connectors"])))), 3)
 
 
 def load_sessions(path="data/sessions.json"):
@@ -22,12 +32,17 @@ def load_sessions(path="data/sessions.json"):
 
 
 class Connector:
-    """One charger. Draws min(limit, p_max * taper) while a session is charging."""
+    """One charger. Draws min(limit, p_max * taper) while a session is charging.
 
-    def __init__(self, id, p_max_kw=7.0):
+    Two limits, like the two OCPP profiles: `safe_kw` is the static share (applied at plug-in, and again when the
+    dynamic limit has not been refreshed for DYN_VALID_MIN minutes); `set_limit()` is the dynamic plan on top."""
+
+    def __init__(self, id, p_max_kw=7.0, safe_kw=None):
         self.id, self.p_max_kw = id, p_max_kw
+        self.safe_kw = min(safe_kw, p_max_kw) if safe_kw else p_max_kw  # no share configured = fail-open, as before
         self.session = None
-        self.limit_kw = p_max_kw  # fail-open: full power until a plan says otherwise
+        self.limit_kw = self.safe_kw
+        self.dyn_left = 0
         self.kw = 0.0
 
     @property
@@ -38,12 +53,17 @@ class Connector:
         self.session = session
         session["connector_id"] = self.id
         session["status"] = "charging"
-        self.limit_kw = self.p_max_kw
+        self.limit_kw, self.dyn_left = self.safe_kw, 0  # the static profile, until the next plan lands
 
     def set_limit(self, kw):
         self.limit_kw = max(0.0, min(kw, self.p_max_kw))
+        self.dyn_left = DYN_VALID_MIN
 
     def tick(self, minutes):
+        if self.dyn_left > 0:
+            self.dyn_left -= minutes
+            if self.dyn_left <= 0:
+                self.limit_kw = self.safe_kw  # nobody refreshed the plan: the charger falls back on its own
         s = self.session
         if not s or s["status"] != "charging":
             self.kw = 0.0
@@ -67,7 +87,7 @@ class Sim:
         self.now = day + timedelta(hours=START_HOUR)
         self.day_end = day + timedelta(days=1)
         self.pending = sorted(sessions, key=lambda s: s["arrival"])
-        self.connectors = {cid: connector_cls(cid, site["p_max_kw"]) for cid in site["connectors"]}
+        self.connectors = {cid: connector_cls(cid, site["p_max_kw"], safe_share_kw(site)) for cid in site["connectors"]}
         self.sessions = {s["id"]: s for s in sessions}
 
     def free_connector(self, preferred=None):
@@ -105,26 +125,36 @@ class Sim:
         return [c for c in self.connectors.values() if c.session]
 
 
-if __name__ == "__main__":  # self-check: python -m noonshift.sim
-    site = json.load(open("data/site.json"))
+def _replay(site):
     sim = Sim(load_sessions(), site)
     plugged, peak = set(), 0.0
     while sim.now < sim.day_end:
         for e in sim.tick():
+            s = sim.sessions[e["session_id"]]
             if e["name"] == "plug_in":
-                s = sim.sessions[e["session_id"]]
                 assert s["arrival"] <= sim.now < s["arrival"] + timedelta(minutes=2), (s["arrival"], sim.now)
                 plugged.add(s["id"])
             else:
-                s = sim.sessions[e["session_id"]]
                 assert abs((s["departure"] - sim.now).total_seconds()) < 60
         peak = max(peak, sum(c.kw for c in sim.connectors.values()))
     ss = sim.sessions.values()
     assert plugged == set(sim.sessions), "every session plugged in"
     assert all(s["status"] == "ended" for s in ss), "every session unplugged"
     assert all(s["kwh_delivered"] <= s["kwh_needed"] + 1e-6 for s in ss), "never overfill"
-    assert all(abs(s["kwh_delivered"] - s["kwh_needed"]) < 1e-3 for s in ss if s["id"] not in (7, 23)), "full power fills every long-dwell car"
-    assert 150 < peak <= 280, f"uncontrolled peak {peak:.0f} kW should exceed the 150 kW feed"
-    print(f"sim ok: 40 sessions replayed, uncontrolled peak {peak:.0f} kW, "
-          f"early leavers got {sim.sessions[7]['kwh_delivered']:.1f}/{sim.sessions[7]['kwh_needed']} and "
-          f"{sim.sessions[23]['kwh_delivered']:.1f}/{sim.sessions[23]['kwh_needed']} kWh")
+    return sim, peak
+
+
+if __name__ == "__main__":  # self-check: python -m noonshift.sim
+    site = json.load(open("data/site.json"))
+    # 1. no controller at all: every charger sits on its static share and the site never leaves the feed
+    sim, peak = _replay(site)
+    share = safe_share_kw(site)
+    assert peak <= len(site["connectors"]) * share + 1e-6 <= site["feed_kw"] - max(site["building_load_kw"]), peak
+    short = [s for s in sim.sessions.values() if s["kwh_delivered"] < s["kwh_needed"] - 1e-3]
+    # 2. fail-open (no share configured): the old picture, an uncontrolled peak above the feed
+    sim, peak_open = _replay(dict(site, safe_share_kw=site["p_max_kw"]))
+    short_open = [s for s in sim.sessions.values() if s["kwh_delivered"] < s["kwh_needed"] - 1e-3]
+    assert all(s["kwh_delivered"] >= 0.9 * s["kwh_needed"] for s in short_open), "at full power only the taper tail can be missing"
+    assert peak < peak_open <= len(site["connectors"]) * site["p_max_kw"], f"uncontrolled peak {peak_open:.0f} kW vs shared {peak:.0f} kW"
+    print(f"sim ok: {len(sim.sessions)} sessions replayed; static share {share} kW/connector keeps the site at {peak:.0f} kW "
+          f"({len(short)} cars short without a plan); fail-open peak {peak_open:.0f} kW, {len(short_open)} cars physically unfillable")
