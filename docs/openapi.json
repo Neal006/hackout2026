@@ -1022,6 +1022,36 @@
        }
       ],
       "title": "Kwh Needed"
+     },
+     "vehicle": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vehicle"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "soc_now": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 1.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Soc Now"
+     },
+     "target_soc": {
+      "type": "number",
+      "maximum": 1.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Target Soc",
+      "default": 1.0
      }
     },
     "type": "object",
@@ -1088,6 +1118,38 @@
        }
       ],
       "title": "Urgency"
+     },
+     "kwh_needed": {
+      "type": "number",
+      "title": "Kwh Needed",
+      "default": 0.0
+     },
+     "need_confidence": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "declared",
+         "history",
+         "site"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Need Confidence"
+     },
+     "max_kw": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Kw"
      }
     },
     "type": "object",
@@ -1189,6 +1251,19 @@
       "type": "number",
       "title": "Safe Share Kw",
       "default": 0.0
+     },
+     "waiting": {
+      "type": "integer",
+      "title": "Waiting",
+      "default": 0
+     },
+     "connectors_asap": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Connectors Asap",
+      "default": []
      }
     },
     "type": "object",
@@ -1261,6 +1336,48 @@
      "type"
     ],
     "title": "ValidationError"
+   },
+   "Vehicle": {
+    "properties": {
+     "model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model"
+     },
+     "battery_kwh": {
+      "anyOf": [
+       {
+        "type": "number",
+        "exclusiveMinimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Battery Kwh"
+     },
+     "max_kw": {
+      "anyOf": [
+       {
+        "type": "number",
+        "exclusiveMinimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Kw"
+     }
+    },
+    "type": "object",
+    "title": "Vehicle",
+    "description": "What the driver tells us about the car. All optional: the brain plans with the bay's limit when it knows nothing."
    }
   }
  }

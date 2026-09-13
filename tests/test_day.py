@@ -246,3 +246,92 @@ def test_when_the_control_loop_dies_the_site_falls_back_to_the_static_share(mid_
     assert worst_headroom <= 1e-6, f"site exceeded its headroom by {worst_headroom:.1f} kW with the loop dead"
     assert worst_after <= 1e-6, f"after {DYN_VALID_MIN} min the site drew {worst_after:.1f} kW above n * safe share"
     assert all(c.limit_kw == share for c in sim.active()), "every plugged car sits on the static share"
+
+
+# ---- WP3: cars, needs, queues (solutions.md §3, §10, §11) ----
+class Sink:
+    """A fake /ws client: collects every broadcast frame."""
+    def __init__(self):
+        self.msgs = []
+
+    async def send_json(self, m):
+        self.msgs.append(m)
+
+    def events(self, name):
+        return [m["detail"] for m in self.msgs if m.get("type") == "event" and m["name"] == name]
+
+
+def plug(connector_id, hours=4, **body):
+    from noonshift.api import create_session
+    from noonshift.models import SessionIn
+    return asyncio.run(create_session(SessionIn(connector_id=connector_id, departure_at=S["sim"].now + timedelta(hours=hours), **body)))
+
+
+def test_a_3_3_kw_car_on_a_7_kw_bay_is_planned_at_3_3_and_meets_its_deadline(mid_morning):
+    from noonshift.api import car
+    out = plug("c50", hours=4, vehicle={"model": "PHEV", "battery_kwh": 40, "max_kw": 3.3}, soc_now=0.7, target_soc=0.9)
+    s = mid_morning.sessions[out.session_id]
+    assert out.kwh_needed == pytest.approx(8.0) and out.need_confidence == "declared" and out.max_kw == 3.3
+    assert car(mid_morning.connectors["c50"])["p_max_kw"] == 3.3
+    assert max(S["plan"]["c50"]) <= 3.3 + 1e-9, "the brain never plans more than the car can take"
+    asyncio.run(play_until(s["user_stated_departure"]))
+    assert s["kwh_delivered"] == pytest.approx(8.0, abs=0.1), "8 kWh at 3.3 kW fits in 4 h and lands"
+
+
+def test_need_comes_from_history_or_the_site_when_the_driver_types_nothing(mid_morning):
+    out = plug("c51", hours=5)
+    assert out.need_confidence in ("history", "site") and out.kwh_needed > 0
+    assert out.kwh_needed == pytest.approx(8.0, abs=2.0), "the frozen day's median need, not a magic number"
+
+
+def test_observation_guard_believes_the_meter_over_the_plan(mid_morning):
+    """A car the form calls a 7 kW car draws 3.3 kW (PHEV, cold battery). After 5 minutes under 80 % of its limit the
+    brain caps it at metered * 1.05 and says so; from then on the plan never asks for more than the car can take."""
+    from noonshift.api import car
+    sink = Sink()
+    S["clients"].add(sink)
+    out = plug("c52", hours=6, kwh_needed=9.0)
+    s = mid_morning.sessions[out.session_id]
+    s["car_kw"] = 3.3  # the physical truth the sim knows and the brain does not
+    asyncio.run(urgency(out.session_id, UrgencyIn(level="now")))  # full power asked, so the gap shows
+    asyncio.run(play_until(mid_morning.now + timedelta(minutes=7)))
+    assert s["cap_observed"] and s["max_kw"] == pytest.approx(3.3 * 1.05, abs=0.02)
+    caps = sink.events("cap_observed")
+    assert caps and caps[-1]["connector_id"] == "c52" and caps[-1]["limit_kw"] > caps[-1]["metered_kw"]
+    assert car(mid_morning.connectors["c52"])["p_max_kw"] == pytest.approx(3.47, abs=0.02)
+    assert max(S["plan"]["c52"]) <= 3.47 + 1e-6
+    S["clients"].discard(sink)
+
+
+def test_asap_bay_is_never_deferred(mid_morning):
+    from noonshift.api import car
+    out = plug("c41", hours=8, kwh_needed=20.0)  # site.json connectors_asap: a loading-dock bay, 8 h of slack
+    assert car(mid_morning.connectors["c41"])["boost"] is True
+    assert S["plan"]["c41"][:6] == [S["site"]["p_max_kw"]] * 6, "full power from the first slot despite 8 h of slack"
+    assert out.boost is False, "the session itself is not a driver Boost; the bay is configured that way"
+
+
+def test_a_queue_tightens_the_slackest_car_and_a_bay_frees(mid_morning):
+    from noonshift.api import site_status
+    sink = Sink()
+    S["clients"].add(sink)
+    for _ in range(3):  # 36 replayed + 60 late cars > 60 bays
+        asyncio.run(demo_oversubscribe())
+    sim = mid_morning
+    waiting = [s["id"] for s in sim.waiting]
+    assert waiting and site_status("site-1").waiting == len(waiting)
+    moved = [c.session for c in sim.active() if c.session.get("move_by")]
+    assert moved, "at least one plugged car got a move-by time"
+    for s in moved:
+        finish = sim.now + timedelta(hours=(s["kwh_needed"] - s["kwh_delivered"]) / S["site"]["p_max_kw"])
+        assert finish <= s["user_stated_departure"] <= finish + timedelta(minutes=6), "deadline = now + time to finish at full power"
+        assert not s.get("urgent")
+    assert len(moved) <= len(waiting), "one tightened car per waiting car"
+    assert sink.events("move_by") and all(e["waiting"] > 0 for e in sink.events("move_by"))
+    asyncio.run(play_until(sim.now + timedelta(hours=4)))
+    plugged_later = [e for e in sink.events("plug_in") if e["session_id"] in waiting]
+    assert plugged_later and all(e["waited_min"] > 0 for e in plugged_later), "waiting cars got a bay as bays freed"
+    assert len(sim.waiting) < len(waiting)
+    dones = sink.events("done")
+    assert dones, "a full car raises a done event (the 'please move' notification)"
+    S["clients"].discard(sink)

@@ -41,7 +41,7 @@ async def main():
         assert meters, "no meter frames on /ws"
         sim_now = datetime.fromisoformat(meters[-1]["sim_time"])
         st = http("GET", "/sites/site-1/status")
-        assert st["feed_kw"] > 0 and st["block_kw"] > 0 and st["sim_time"], st
+        assert st["feed_kw"] > 0 and st["block_kw"] > 0 and st["sim_time"] and st["safe_share_kw"] > 0 and st["connectors_asap"], st
         free = [c["connector_id"] for c in meters[-1]["connectors"] if c["session_id"] is None]
         connector = free[-1]
         print(f"[ws]     sim_time={sim_now}  mode={st['mode']}  feed={st['feed_kw']} kW block={st['block_kw']} kW  free={len(free)} -> driver takes {connector}")
@@ -85,6 +85,17 @@ async def main():
                   for cid in (free[-2], free[-3])]
         await asyncio.sleep(1.5)
 
+        # 5b. a fleet van on a connectors_asap bay is never deferred; a PHEV form caps the plan at the car's 3.3 kW
+        van = http("POST", "/sessions", {"connector_id": st["connectors_asap"][0], "departure_at": departure, "kwh_needed": 20})
+        phev = http("POST", "/sessions", {"connector_id": free[-4], "departure_at": departure,
+                                          "vehicle": {"model": "PHEV", "battery_kwh": 40, "max_kw": 3.3}, "soc_now": 0.7, "target_soc": 0.9})
+        assert van["plan"]["start"] and phev["kwh_needed"] == 8.0 and phev["need_confidence"] == "declared" and phev["max_kw"] == 3.3
+        await asyncio.sleep(1.5)
+        plans = frames_of(frames, "plan")[-1]["connectors"]
+        assert max(next(c["kw"] for c in plans if c["session_id"] == phev["session_id"])) <= 3.3
+        assert next(c["kw"] for c in plans if c["session_id"] == van["session_id"])[0] == 7.0, "asap bay: full power now"
+        print(f"[driver] van on {st['connectors_asap'][0]} at full power; PHEV form -> {phev['kwh_needed']} kWh ({phev['need_confidence']}) capped at {phev['max_kw']} kW")
+
         # 6a. the emergency bands (business.md §4b): "soon" moves the deadline, "priority" keeps it; both pay exactly R
         soon_at = (sim_now + timedelta(hours=1, minutes=30)).replace(second=0, microsecond=0).isoformat()
         u1 = http("POST", f"/sessions/{others[0]}/urgency", {"level": "soon", "leave_at": soon_at})
@@ -100,7 +111,7 @@ async def main():
         for path, body in (("/demo/early_unplug", None), ("/demo/boost", None), ("/demo/oversubscribe", None),
                            ("/demo/signal_outage", {"rungs": ["live"]})):
             d = http("POST", path, body)
-            print(f"[ops]    POST {path} -> {d['changed']}")
+            print(f"[ops]    POST {path} -> {d['changed']}" + (f" (waiting {d['detail']['waiting']})" if "waiting" in d["detail"] else ""))
         await asyncio.sleep(2.5)
         assert frames_of(frames, "event", name="unplug"), "unplug event not broadcast"
         assert frames_of(frames, "event", name="mode"), "mode event not broadcast"
