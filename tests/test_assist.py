@@ -109,7 +109,7 @@ def test_rate_limit_is_ten_per_minute_per_ip():
 
 def test_ask_without_a_key_is_the_fallback(snap, monkeypatch):
     """The HTTP round-trip (200 + fallback flag, 422 on empty, 429 after ten) is scripts/smoke.py's job; this is the unit."""
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     payload, status = assist.ask("what happens if the grid API dies?", [{"role": "user", "content": "hi"}], "/ops/overview", snap)
     assert status == 200 and payload["fallback"] is True and "ladder" in payload["answer"] and payload["suggested_actions"]
 
@@ -125,9 +125,9 @@ def test_ops_token_guards_operator_endpoints(monkeypatch):
     ops_auth("Bearer s3cret")
 
 
-@pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="needs ANTHROPIC_API_KEY")
-def test_prompt_cache_is_reused_on_the_second_call(snap):
-    """Two consecutive calls: the second must read the cached system prefix. If not, something volatile crept into SYSTEM."""
-    a, _ = assist.ask("what is the safe share?", snap=snap)
-    b, _ = assist.ask("and what happens if the grid API dies?", snap=snap)
-    assert "usage" in a and b["usage"]["cache_read_input_tokens"] > 0, (a.get("usage"), b.get("usage"))
+@pytest.mark.skipif(not os.environ.get("GROQ_API_KEY"), reason="needs GROQ_API_KEY")
+def test_model_answer_is_grounded_and_parsed(snap):
+    """One real Groq call: not the fallback, ends with parsed page actions and usage. Skipped in CI (no key)."""
+    a, status = assist.ask("what is the safe share?", snap=snap)
+    assert status == 200 and not a.get("fallback") and a["usage"]["total_tokens"] > 0, a
+    assert str(snap["site"]["safe_share_kw"]) in a["answer"] and all(x["path"].startswith("/ops/") for x in a["suggested_actions"]), a

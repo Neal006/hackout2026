@@ -40,6 +40,9 @@ export function GlobalStateProvider({ children }) {
   const [connected, setConnected] = useState(false);
   const [dayKey, setDayKey] = useState(0); // bumps on day_reset so the signal is refetched
   const socketRef = useRef(null);
+  const pendingMeter = useRef(null); // latest unflushed meter frame
+  const kwhRef = useRef(Array(24).fill(0)); // per-hour kWh, summed on every frame
+  const modeRef = useRef({ mode: null, at: 0 }); // last mode seen and when it changed
   const arrivalsRef = useRef({}); // session_id -> HH:MM from its plug_in event; sessions that predate this page show "—"
 
   // ---- WebSocket: reconnects on close ----
@@ -59,47 +62,17 @@ export function GlobalStateProvider({ children }) {
         if (f.type === 'plan') {
           setPlan(f);
         } else if (f.type === 'meter') {
-          setMeter(f);
-          const h = new Date(f.sim_time).getHours();
-          setTicks((prev) => prev.map((t) => (t.time === h ? { time: h, ev: f.site_kw, building: f.building_load_kw, kwh: t.kwh + f.site_kw / 60 } : t)));
-          setSessions((prev) => {
-            const next = { ...prev };
-            for (const c of f.connectors) {
-              if (c.session_id == null) continue;
-              const old = next[c.session_id];
-              const mins = c.departure_at ? minutesBetween(f.sim_time, c.departure_at) : null;
-              next[c.session_id] = {
-                id: `SESS-${c.session_id}`,
-                sid: c.session_id,
-                site: SITE,
-                connector: c.connector_id,
-                arrival: old?.arrival ?? arrivalsRef.current[c.session_id] ?? '—',
-                departure: hhmm(c.departure_at),
-                departure_at: c.departure_at,
-                kwh_delivered: c.kwh_delivered,
-                kwh_needed: c.kwh_needed,
-                energy: `${c.kwh_delivered.toFixed(1)} / ${c.kwh_needed.toFixed(1)} kWh`,
-                status: c.status === 'done' ? 'Completed' : c.kw > 0 ? 'Charging' : 'Waiting',
-                risk: mins != null && mins < 30 && c.kwh_delivered < 0.9 * c.kwh_needed && c.status !== 'done' ? 'High' : 'Low',
-                boost: c.boost,
-                urgency: c.urgency ?? null,
-                idleMin: c.idle_min ?? 0,
-                needConfidence: c.need_confidence ?? null,
-                pMaxKw: c.p_max_kw ?? 0,
-                capObserved: !!c.cap_observed,
-                asap: !!c.asap,
-                moveBy: !!c.move_by,
-              };
-            }
-            return next;
-          });
+          pendingMeter.current = f; // coalesced: applyMeter runs on the flush timer
+          kwhRef.current[new Date(f.sim_time).getHours()] += f.site_kw / 60; // every frame counts, even the skipped ones
         } else if (f.type === 'event') {
-          setEvents((prev) => [{ ...f, id: `${f.sim_time}-${f.name}-${prev.length}` }, ...prev].slice(0, 200));
+          setEvents((prev) => [{ ...f, at: Date.now(), id: `${f.sim_time}-${f.name}-${prev.length}` }, ...prev].slice(0, 200));
           if (f.name === 'plug_in') {
             arrivalsRef.current[f.detail.session_id] = hhmm(f.sim_time);
           } else if (f.name === 'unplug') {
             setSessions((prev) => (prev[f.detail.session_id] ? { ...prev, [f.detail.session_id]: { ...prev[f.detail.session_id], status: 'Completed', risk: 'Low' } } : prev));
           } else if (f.name === 'day_reset') {
+            pendingMeter.current = null;
+            kwhRef.current = Array(24).fill(0);
             setSessions({});
             setPlan(null);
             setTicks(emptyHours());
@@ -109,24 +82,70 @@ export function GlobalStateProvider({ children }) {
       };
     };
     open();
+    // ponytail: meter frames arrive ~7/s (one per sim-minute); one React commit per frame froze the busy pages,
+    // so keep only the latest and render it every 500 ms. Raise the interval if the UI still stutters.
+    const flush = setInterval(() => {
+      const f = pendingMeter.current;
+      if (!f) return;
+      pendingMeter.current = null;
+      applyMeter(f);
+    }, 500);
+    const applyMeter = (f) => {
+      setMeter(f);
+      const h = new Date(f.sim_time).getHours();
+      setTicks((prev) => prev.map((t) => ({ ...t, kwh: kwhRef.current[t.time], ...(t.time === h ? { ev: f.site_kw, building: f.building_load_kw } : {}) })));
+      setSessions((prev) => {
+        const next = { ...prev };
+        for (const c of f.connectors) {
+          if (c.session_id == null) continue;
+          const old = next[c.session_id];
+          const mins = c.departure_at ? minutesBetween(f.sim_time, c.departure_at) : null;
+          next[c.session_id] = {
+            id: `SESS-${c.session_id}`,
+            sid: c.session_id,
+            site: SITE,
+            connector: c.connector_id,
+            arrival: old?.arrival ?? arrivalsRef.current[c.session_id] ?? '—',
+            departure: hhmm(c.departure_at),
+            departure_at: c.departure_at,
+            kwh_delivered: c.kwh_delivered,
+            kwh_needed: c.kwh_needed,
+            energy: `${c.kwh_delivered.toFixed(1)} / ${c.kwh_needed.toFixed(1)} kWh`,
+            status: c.status === 'done' ? 'Completed' : c.kw > 0 ? 'Charging' : 'Waiting',
+            risk: mins != null && mins < 30 && c.kwh_delivered < 0.9 * c.kwh_needed && c.status !== 'done' ? 'High' : 'Low',
+            boost: c.boost,
+            urgency: c.urgency ?? null,
+            idleMin: c.idle_min ?? 0,
+            needConfidence: c.need_confidence ?? null,
+            pMaxKw: c.p_max_kw ?? 0,
+            capObserved: !!c.cap_observed,
+            asap: !!c.asap,
+            moveBy: !!c.move_by,
+            createdAt: old?.createdAt ?? Date.now(), // wall clock: rows younger than a few seconds flash
+          };
+        }
+        return next;
+      });
+    };
     return () => {
       closed = true;
       clearTimeout(retry);
+      clearInterval(flush);
       socketRef.current?.close();
     };
   }, []);
 
   // ---- REST polling ----
+  const poll = async () => {
+    try {
+      const [i, s] = await Promise.all([fetch(`${API}/sites/${SITE}/impact`), fetch(`${API}/sites/${SITE}/status`)]);
+      if (i.ok) setImpact(await i.json());
+      if (s.ok) setStatus(await s.json());
+    } catch {
+      /* backend down: keep last values */
+    }
+  };
   useEffect(() => {
-    const poll = async () => {
-      try {
-        const [i, s] = await Promise.all([fetch(`${API}/sites/${SITE}/impact`), fetch(`${API}/sites/${SITE}/status`)]);
-        if (i.ok) setImpact(await i.json());
-        if (s.ok) setStatus(await s.json());
-      } catch {
-        /* backend down: keep last values */
-      }
-    };
     poll();
     const t = setInterval(poll, 5000);
     return () => clearInterval(t);
@@ -146,6 +165,7 @@ export function GlobalStateProvider({ children }) {
     const evKw = meter?.site_kw ?? 0;
     const buildingKw = meter?.building_load_kw ?? 0;
     const mode = status?.mode ?? meter?.mode ?? plan?.mode ?? 'live';
+    if (modeRef.current.mode !== mode) modeRef.current = { mode, at: modeRef.current.mode ? Date.now() : 0 }; // first mode seen is not a change
     const planByConnector = Object.fromEntries((plan?.connectors ?? []).map((c) => [c.connector_id, c]));
     const slotMs = (plan?.slot_minutes ?? 5) * 60000;
     const asapBays = new Set(status?.connectors_asap ?? []);
@@ -195,7 +215,7 @@ export function GlobalStateProvider({ children }) {
     const alerts = events
       .map((e) => {
         const time = hhmm(e.sim_time);
-        const base = { id: e.id, site: SITE, time, status: resolved.has(e.id) ? 'Resolved' : 'Active' };
+        const base = { id: e.id, at: e.at, site: SITE, time, status: resolved.has(e.id) ? 'Resolved' : 'Active' };
         const d = e.detail;
         switch (e.name) {
           case 'mode':
@@ -276,6 +296,7 @@ export function GlobalStateProvider({ children }) {
         signalSource: status?.signal_source ?? null,
         tariffName: status?.tariff_name ?? null,
         lastSolveAt: status?.last_solve_at ?? null,
+        modeChangedAt: modeRef.current.at, // wall clock; the mode badge flashes for a few seconds after it
       },
       portfolio: {
         connectors: siteRow.connectors,
@@ -343,7 +364,8 @@ export function GlobalStateProvider({ children }) {
   // ---- actions: the demo buttons and per-session controls hit the real backend ----
   const post = async (path, body) => {
     const r = await fetch(`${API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
-    if (!r.ok) console.warn(`POST ${path} -> ${r.status}`, await r.text());
+    if (!r.ok) console.warn(`POST ${path} -> ${r.status}`, await r.clone().text()); // clone: the caller may still read the body
+    else poll(); // every action changes status (mode, waiting, ladder): don't wait up to 5 s for the next poll
     return r;
   };
 

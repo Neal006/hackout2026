@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useGlobalState } from '../context/GlobalStateContext';
 import UrgencyControl from '../components/UrgencyControl';
+import { flash } from '../lib/ui';
 
 const NEED_COPY = { declared: 'from the driver', history: 'this bay\'s history', site: 'site median' };
 
@@ -45,7 +46,7 @@ export default function SessionsView() {
           <div className="flex flex-col max-h-[70vh] overflow-y-auto">
             {rows.length === 0 && <div className="p-8 text-center text-sm text-ink-muted">No sessions {filter === 'All' ? 'yet' : `with status ${filter}`}.</div>}
             {rows.map((s) => (
-              <div key={s.id} className={`grid grid-cols-12 items-center p-4 border-b border-border transition-colors ${s.risk === 'High' && s.status !== 'Completed' ? 'bg-danger/10 border-l-4 border-l-danger' : 'hover:bg-bg'}`}>
+              <div key={s.id} className={`${flash(s.createdAt)} grid grid-cols-12 items-center p-4 border-b border-border transition-colors ${s.risk === 'High' && s.status !== 'Completed' ? 'bg-danger/10 border-l-4 border-l-danger' : 'hover:bg-bg'}`}>
                 <div className="col-span-1 mono font-medium text-xs">{s.id}</div>
                 <div className="col-span-1 mono text-xs">
                   {s.connector}

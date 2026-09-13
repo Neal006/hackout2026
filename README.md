@@ -126,7 +126,7 @@ Four buttons on the ops dashboard, each one a `POST /demo/*`:
 
 Script for a 4-minute run: [`.docs/pitch/demo-script.md`](.docs/pitch/demo-script.md).
 
-**Ask the site a question.** The ops dashboard has an *Ask* button: *"why is bay c07 only getting 1.4 kW?"*, *"what happens if the grid API dies?"*, *"how much CO₂ did we save today, in km?"*. The answer comes from a snapshot of the live state plus a hand-written knowledge file (`noonshift/assist_knowledge.md`), via `claude-opus-5` with a cached system prefix when `ANTHROPIC_API_KEY` is set, and from deterministic templates filled with the same snapshot when it is not — so the demo never depends on a key or the internet. It explains and suggests (each answer ends with up to two *label → page* buttons); it never presses anything.
+**Ask the site a question.** The ops dashboard has an *Ask* button: *"why is bay c07 only getting 1.4 kW?"*, *"what happens if the grid API dies?"*, *"how much CO₂ did we save today, in km?"*. The answer comes from a snapshot of the live state plus a hand-written knowledge file (`noonshift/assist_knowledge.md`), via Groq (`llama-3.3-70b-versatile`, override with `ASSIST_MODEL`) when `GROQ_API_KEY` is set, and from deterministic templates filled with the same snapshot when it is not — so the demo never depends on a key or the internet. It explains and suggests (each answer ends with up to two *label → page* buttons); it never presses anything.
 
 ## API
 

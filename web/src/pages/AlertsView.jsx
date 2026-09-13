@@ -1,5 +1,6 @@
 import { useGlobalState } from '../context/GlobalStateContext';
 import { useNavigate } from 'react-router-dom';
+import { flash } from '../lib/ui';
 
 const PAGE_FOR = { Signal: '/ops/schedules', 'Site Load': '/ops/overview', Bays: '/ops/sessions', Site: '/ops/sites', System: '/ops/overview' };
 
@@ -25,7 +26,7 @@ export default function AlertsView() {
             <div className="p-8 text-center text-sm text-ink-muted">Nothing needs attention.</div>
           ) : (
             active.map((a) => (
-              <div key={a.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-border last:border-0 hover:bg-bg transition-colors">
+              <div key={a.id} className={`${flash(a.at)} flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-border last:border-0 hover:bg-bg transition-colors`}>
                 <div className="flex items-start gap-4 min-w-0">
                   <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${a.severity === 'Critical' ? 'bg-danger' : a.severity === 'Warning' ? 'bg-solar' : 'bg-ink-muted'}`}></div>
                   <div className="flex flex-col gap-1 min-w-0">

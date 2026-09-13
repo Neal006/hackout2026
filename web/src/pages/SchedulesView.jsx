@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { useGlobalState } from '../context/GlobalStateContext';
 
 // Planned site kW per hour from the current plan frame (site_kw per 5-min slot from horizon_start)
@@ -23,15 +22,8 @@ const bucket = (g) => (g == null ? '' : g === 0 ? 'bg-saved/15' : g < 200 ? 'bg-
 export default function SchedulesView() {
   const { data } = useGlobalState();
   const { siteDetail, status, signal } = data;
-  const [ago, setAgo] = useState('—');
-
-  useEffect(() => {
-    if (!siteDetail?.solved_at) return;
-    const tick = () => setAgo(`${Math.max(0, Math.floor((Date.now() - siteDetail.solved_at) / 1000))} s ago`);
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [siteDetail?.solved_at]);
+  // solved_at is sim time, so measure against the sim clock, not Date.now()
+  const ago = siteDetail.solved_at && data.simTime ? `${Math.max(0, Math.round((new Date(data.simTime) - siteDetail.solved_at) / 60000))} sim-min ago` : '—';
 
   const planned = plannedByHour(siteDetail.horizon_start, siteDetail.site_kw);
   const metered = siteDetail.meter_ticks.map((t) => t.ev);

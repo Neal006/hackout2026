@@ -1,5 +1,6 @@
 import { useGlobalState } from '../context/GlobalStateContext';
 import { useNavigate } from 'react-router-dom';
+import { flash } from '../lib/ui';
 
 // 06:00-22:00 on x (0-1000); the top line sits at y=20 (= the y-axis max), zero load at y=180. Hours not yet reached stay at 0.
 const linePoints = (ticks, pick, maxKw) =>
@@ -35,7 +36,7 @@ export default function DashboardOverview() {
           <h1 className="text-2xl font-semibold text-ink">{siteDetail.id}</h1>
           <p className="text-sm text-ink-muted mt-1">Replay day {data.simTime ? new Date(data.simTime).toDateString() : '—'} · live from Noonshift</p>
         </div>
-        <div className={`inline-flex items-center gap-2 px-2 py-1 text-xs border ${status.mode === 'live' ? 'bg-saved/10 text-saved border-saved/20' : 'bg-solar/10 text-solar border-solar/20'}`} title={status.modeCopy}>
+        <div key={status.mode} className={`${flash(status.modeChangedAt)} inline-flex items-center gap-2 px-2 py-1 text-xs border ${status.mode === 'live' ? 'bg-saved/10 text-saved border-saved/20' : 'bg-solar/10 text-solar border-solar/20'}`} title={status.modeCopy}>
           <span className="w-2 h-2 rounded-full bg-current"></span>
           mode {status.mode}
         </div>

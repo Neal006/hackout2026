@@ -10,7 +10,7 @@ from pathlib import Path
 
 log = logging.getLogger("noonshift.assist")
 
-MODEL = "claude-opus-5"
+MODEL = os.environ.get("ASSIST_MODEL", "llama-3.3-70b-versatile")  # Groq; any chat model on console.groq.com/docs/models
 MAX_ROWS = 15            # connector rows in the snapshot: the most relevant ones, plus counts for the rest
 SNAPSHOT_CHARS = 24_000  # ~6 k tokens
 KNOWLEDGE = (Path(__file__).with_name("assist_knowledge.md")).read_text(encoding="utf-8")
@@ -37,10 +37,7 @@ Rules:
 - After the suggested actions, end with one line: [sources: <comma-separated knowledge section names you used>].
 If no tool or state can answer what was asked, say so instead of guessing. Do not include internal XML tags in your response."""
 
-SYSTEM = [
-    {"type": "text", "text": RULES, "cache_control": {"type": "ephemeral"}},
-    {"type": "text", "text": KNOWLEDGE, "cache_control": {"type": "ephemeral"}},
-]
+SYSTEM = RULES + "\n\n" + KNOWLEDGE  # constant prefix: Groq caches it automatically across calls
 
 ACTION_RE = re.compile(r"^[ \t]*(?:[-*•]\s*)?\**(.+?)\**\s*(?:→|->)\s*`?(/ops/[\w/-]*)`?\**\s*$", re.M)
 SOURCES_RE = re.compile(r"\[sources?:\s*([^\]]*)\]\s*", re.I)
@@ -123,25 +120,24 @@ def parse(text):
 def ask(question, history=(), page="", snap=None):
     """Returns (payload, http_status). The model when a key works; the deterministic fallback otherwise."""
     snap = snap or snapshot()
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not os.environ.get("GROQ_API_KEY"):
         return fallback(question, snap), 200
-    import anthropic
-    messages = [{"role": t["role"], "content": t["content"]} for t in list(history)[-6:]]
+    import groq  # only here: no key = no import, so CI needs neither the package's network nor a key
+    messages = [{"role": "system", "content": SYSTEM}]
+    messages += [{"role": t["role"], "content": t["content"]} for t in list(history)[-6:]]
     messages.append({"role": "user", "content": f"<site_state>{json.dumps(snap, sort_keys=True)}</site_state>\n<page>{page}</page>\n{question}"})
     try:
-        resp = anthropic.Anthropic().messages.create(
-            model=MODEL, max_tokens=1024, thinking={"type": "adaptive"}, output_config={"effort": "low"},
-            system=SYSTEM, messages=messages)
-    except anthropic.AuthenticationError as e:
+        resp = groq.Groq().chat.completions.create(model=MODEL, max_tokens=1024, temperature=0.2, messages=messages)
+    except groq.AuthenticationError as e:
         log.warning("assist: bad key, falling back (request_id=%s)", getattr(e, "request_id", None))
         return fallback(question, snap), 200
-    except anthropic.RateLimitError as e:
+    except groq.RateLimitError as e:
         log.warning("assist: model rate limit (request_id=%s)", getattr(e, "request_id", None))
         return {"detail": "The assistant is rate-limited by the model API; try again shortly.", "retry_after": 20}, 429
-    except (anthropic.APIConnectionError, anthropic.APIStatusError) as e:
+    except (groq.APIConnectionError, groq.APIStatusError) as e:
         log.warning("assist: %s, degraded fallback (request_id=%s)", type(e).__name__, getattr(e, "request_id", None))
         return {**fallback(question, snap), "degraded": True}, 200
-    answer, sources, actions = parse("".join(b.text for b in resp.content if b.type == "text"))
+    answer, sources, actions = parse(resp.choices[0].message.content or "")
     return {"answer": answer, "sources": sources, "suggested_actions": actions, "usage": resp.usage.model_dump()}, 200
 
 

@@ -1,6 +1,7 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useGlobalState } from '../context/GlobalStateContext';
-import { MODE_COPY } from '../lib/ui';
+import { MODE_COPY, flash } from '../lib/ui';
 import AssistDrawer from './AssistDrawer';
 
 const NAV = [
@@ -20,6 +21,24 @@ const downRungs = (ladder) => Object.entries(ladder).filter(([, ok]) => !ok).map
 export default function AppShell() {
   const { data, triggerEvent } = useGlobalState();
   const { status } = data;
+  const navigate = useNavigate();
+  const [note, setNote] = useState(null); // what the last demo button did, from the backend's `changed`
+  // Where each scenario's effect is visible; new rows / a changed mode badge flash there (index.css .flash).
+  const SHOW_ON = { demo_late_surge: '/ops/sessions', demo_driver_early: '/ops/alerts', demo_grid_fail: '/ops/overview', demo_grid_restore: '/ops/overview' };
+  const demo = async (endpoint) => {
+    setNote('…');
+    try {
+      const r = await triggerEvent(endpoint);
+      if (r.ok) {
+        setNote((await r.json()).changed);
+        navigate(SHOW_ON[endpoint]);
+      } else {
+        setNote(`not now: ${(await r.json().catch(() => ({}))).detail ?? r.status}`);
+      }
+    } catch {
+      setNote('failed: backend unreachable');
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row text-ink font-sans bg-bg relative">
@@ -40,7 +59,8 @@ export default function AppShell() {
         </div>
 
         <div className="border-t border-border p-4 flex flex-col gap-4 bg-bg text-sm">
-          <div className="flex items-start gap-2">
+          {/* keyed so a mode / queue change remounts it and the flash runs */}
+          <div key={status.mode} className={`${flash(status.modeChangedAt)} flex items-start gap-2 -mx-2 px-2`}>
             <div className={`w-2 h-2 mt-1 rounded-full shrink-0 ${data.systemStatus === 'Optimal' ? 'bg-saved' : 'bg-solar'}`}></div>
             <span className="text-xs text-ink-muted">
               {data.systemStatus} · mode <span className="text-ink">{status.mode}</span>
@@ -52,11 +72,12 @@ export default function AppShell() {
           <div className="flex flex-col gap-2">
             <div className="text-[10px] uppercase font-medium text-ink-muted tracking-wider mb-1">Demo</div>
             <div className="grid grid-cols-2 md:grid-cols-1 gap-2">
-              <button onClick={() => triggerEvent('demo_driver_early')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Driver leaves early</button>
-              <button onClick={() => triggerEvent('demo_late_surge')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">20 late arrivals</button>
-              <button onClick={() => triggerEvent('demo_grid_fail')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Grid signal unavailable</button>
-              <button onClick={() => triggerEvent('demo_grid_restore')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Restore grid signal</button>
+              <button onClick={() => demo('demo_driver_early')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Driver leaves early</button>
+              <button onClick={() => demo('demo_late_surge')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">20 late arrivals</button>
+              <button onClick={() => demo('demo_grid_fail')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Grid signal unavailable</button>
+              <button onClick={() => demo('demo_grid_restore')} className="text-left text-xs border border-border p-1.5 hover:border-ink transition-colors">Restore grid signal</button>
             </div>
+            {note && <div className="text-[11px] text-ink-muted leading-snug">{note}</div>}
           </div>
         </div>
       </nav>
