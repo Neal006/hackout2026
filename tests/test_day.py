@@ -335,3 +335,11 @@ def test_a_queue_tightens_the_slackest_car_and_a_bay_frees(mid_morning):
     dones = sink.events("done")
     assert dones, "a full car raises a done event (the 'please move' notification)"
     S["clients"].discard(sink)
+
+
+def test_metered_peak_never_reports_above_the_feed(day):
+    """site_peaks() lays per-minute meters onto absolute 5-min slots. A session that began mid-slot used to be shifted by
+    up to 4 minutes, so two cars misaligned in opposite directions could report a slot above the feed that never
+    happened. The instantaneous sum is checked above; the reported KPI must agree with it."""
+    assert any(h["start"].minute % 5 for h in day["hist"].values()), "the seed has mid-slot plug-ins, or this test proves nothing"
+    assert day["site"].peak_kw <= S["site"]["feed_kw"] + 1e-6, day["site"].peak_kw

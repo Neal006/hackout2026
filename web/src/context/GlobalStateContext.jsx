@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { hhmm, MODE_COPY } from '../lib/ui';
+import { API } from '../lib/api';
 
 /*
  * Live state for the ops dashboard, fed by the Noonshift backend:
@@ -10,7 +11,6 @@ import { hhmm, MODE_COPY } from '../lib/ui';
  */
 
 const SITE = 'site-1';
-const API = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '/api' : 'http://localhost:8000');
 const WS_URL = import.meta.env.VITE_WS_URL ?? (import.meta.env.DEV ? `ws://${location.host}/ws` : 'ws://localhost:8000/ws');
 
 // Gantt axis in OpsDashboard runs 06:00 -> 22:00

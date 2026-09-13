@@ -548,11 +548,136 @@
     }
    }
   },
+  "/assist": {
+   "post": {
+    "summary": "Assist Ask",
+    "description": "The operator assistant: explains and suggests from live state + repo docs; never acts. Falls back to templates\nwithout a key; 429 with Retry-After when the model or the per-IP limit (10/min) says so.",
+    "operationId": "assist_ask_assist_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AssistIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AssistOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/assist/suggestions": {
+   "get": {
+    "summary": "Assist Suggestions",
+    "operationId": "assist_suggestions_assist_suggestions_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         },
+         "title": "Response Assist Suggestions Assist Suggestions Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/demo/early_unplug": {
    "post": {
     "summary": "Demo Early Unplug",
     "description": "Tom: told us 17:00, leaves now. Picks the charging car with the latest deadline and least energy.",
     "operationId": "demo_early_unplug_demo_early_unplug_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -560,6 +685,16 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -572,6 +707,24 @@
     "summary": "Demo Boost",
     "description": "Sofia: 10:30 site visit. Picks the least-charged car, moves its deadline to now+1h with Boost.",
     "operationId": "demo_boost_demo_boost_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -579,6 +732,16 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -591,6 +754,24 @@
     "summary": "Demo Oversubscribe",
     "description": "+20 late arrivals, 2 h deadlines, on the spare connectors. More demand than the feed can serve.",
     "operationId": "demo_oversubscribe_demo_oversubscribe_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -598,6 +779,16 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -610,6 +801,24 @@
     "summary": "Demo Signal Outage",
     "description": "Knock rungs out of the fail-safe ladder (default: the live signal) or restore all.",
     "operationId": "demo_signal_outage_demo_signal_outage_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
     "requestBody": {
      "content": {
       "application/json": {
@@ -652,6 +861,104 @@
  },
  "components": {
   "schemas": {
+   "AssistAction": {
+    "properties": {
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "path": {
+      "type": "string",
+      "title": "Path"
+     }
+    },
+    "type": "object",
+    "required": [
+     "label",
+     "path"
+    ],
+    "title": "AssistAction"
+   },
+   "AssistIn": {
+    "properties": {
+     "question": {
+      "type": "string",
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Question"
+     },
+     "history": {
+      "items": {
+       "$ref": "#/components/schemas/Turn"
+      },
+      "type": "array",
+      "title": "History",
+      "default": []
+     },
+     "page": {
+      "type": "string",
+      "maxLength": 200,
+      "title": "Page",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "required": [
+     "question"
+    ],
+    "title": "AssistIn"
+   },
+   "AssistOut": {
+    "properties": {
+     "answer": {
+      "type": "string",
+      "title": "Answer"
+     },
+     "sources": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Sources",
+      "default": []
+     },
+     "suggested_actions": {
+      "items": {
+       "$ref": "#/components/schemas/AssistAction"
+      },
+      "type": "array",
+      "title": "Suggested Actions",
+      "default": []
+     },
+     "fallback": {
+      "type": "boolean",
+      "title": "Fallback",
+      "default": false
+     },
+     "degraded": {
+      "type": "boolean",
+      "title": "Degraded",
+      "default": false
+     },
+     "usage": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Usage"
+     }
+    },
+    "type": "object",
+    "required": [
+     "answer"
+    ],
+    "title": "AssistOut"
+   },
    "ConnectorPlan": {
     "properties": {
      "connector_id": {
@@ -1448,6 +1755,29 @@
      "connectors_active"
     ],
     "title": "StatusOut"
+   },
+   "Turn": {
+    "properties": {
+     "role": {
+      "type": "string",
+      "enum": [
+       "user",
+       "assistant"
+      ],
+      "title": "Role"
+     },
+     "content": {
+      "type": "string",
+      "maxLength": 4000,
+      "title": "Content"
+     }
+    },
+    "type": "object",
+    "required": [
+     "role",
+     "content"
+    ],
+    "title": "Turn"
    },
    "UrgencyIn": {
     "properties": {

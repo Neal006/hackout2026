@@ -206,3 +206,29 @@ class EventMsg(BaseModel):
 
 
 WS_FRAMES = PlanMsg | MeterMsg | EventMsg
+
+
+# ---- operator assistant (WP6) ----
+class Turn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=4000)
+
+
+class AssistIn(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    history: list[Turn] = []
+    page: str = Field("", max_length=200)
+
+
+class AssistAction(BaseModel):
+    label: str
+    path: str
+
+
+class AssistOut(BaseModel):
+    answer: str
+    sources: list[str] = []
+    suggested_actions: list[AssistAction] = []
+    fallback: bool = False   # template answer, no model
+    degraded: bool = False   # model unreachable; template answer
+    usage: dict | None = None
