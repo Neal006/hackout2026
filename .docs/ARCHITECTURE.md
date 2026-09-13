@@ -146,12 +146,12 @@ stateDiagram-v2
     note right of cached : same, last forecast ≤ 6 h old
     note right of tariff : tariff + deadlines, no carbon
     note right of deadline : earliest-deadline-first only
-    note right of full : every connector at p_max (no solve)
+    note right of full : every connector holds its static safe share (no solve)
 ```
 
 `pick_mode()` in `api.py` walks the rungs top-down and returns the first healthy one; `resolve()` shapes the LP inputs to match (tariff-only ⇒ empty `moer`; deadline-only ⇒ also empty `price_per_kwh`; full ⇒ no solve). The demo button `POST /demo/signal_outage` flips the rungs.
 
-**Known gap:** the `full` rung sets every connector to `p_max` at once. With 40 deferred cars that is a 280 kW spike on a 100 kW block. The fix — a static "safe share" profile that lives on the charger underneath the dynamic one, so chargers revert to it on their own when the backend disappears — is specified in [`solutions.md`](solutions.md) §5 and is the next scheduler-side change.
+**The last rung is inspector-grade.** `full` no longer means "every connector at `p_max`" (40 deferred cars would have been a 280 kW spike on a 100 kW block). It is the static **safe share** `min(p_max, (feed − max building load) / n)` — 1.833 kW per bay on the demo site — which is also the OCPP stack-0 profile that lives on each charger underneath the dynamic plan (§5), so chargers revert to it on their own when the backend disappears. `sim.safe_share_kw()`, `tests/test_day.py::test_when_the_control_loop_dies_the_site_falls_back_to_the_static_share`, [`solutions.md`](solutions.md) §5.
 
 ---
 
@@ -164,11 +164,12 @@ sequenceDiagram
     participant API as api.py
     CP->>GW: BootNotification
     GW-->>CP: Accepted
+    GW->>CP: SetChargingProfile (stack 0, static safe share, no expiry)
     CP->>GW: StartTransaction (idTag, meterStart)
     GW->>API: session on connector
-    loop every 5 min / on event
+    loop every 5 min / on event, re-sent at least every 10 min
         API->>GW: set_limit(kW)
-        GW->>CP: SetChargingProfile (TxDefaultProfile, stack 0, limit kW)
+        GW->>CP: SetChargingProfile (stack 1, plan kW, validTo = now + 15 min)
         CP-->>GW: Accepted
     end
     CP->>GW: MeterValues (kW, kWh)
@@ -177,9 +178,9 @@ sequenceDiagram
     GW->>API: unplug → receipt
 ```
 
-`OcppConnector` replaces the simulator's `Connector` when `OCPP=1`; `set_limit` only takes effect once the charge point accepts the profile (`python -m noonshift.ocpp_gateway` runs the round-trip self-check against a fake charge point). Hardware max current is configured on the charger itself; the profile can only lower it.
+`OcppConnector` replaces the simulator's `Connector` when `OCPP=1`; `set_limit` only takes effect once the charge point accepts the profile (`python -m noonshift.ocpp_gateway` runs the round-trip self-check against a fake charge point: static after boot, dynamic with `validTo`, revert to the safe share on expiry). Two profiles per connector: stack 0 is the static safe share with no expiry; stack 1 is the plan limit, valid 15 minutes and refreshed every 10, so a silent backend means the charger falls back to the share by itself. Hardware max current is configured on the charger itself; a profile can only lower it. Never `await self.call()` inside an `@after` handler — it deadlocks the message loop; schedule it as a task.
 
-Not yet done: authentication on the websocket (OCPP security profile 1), two-profile stacking with expiry (§4 gap), a real charger. See [`SECURITY.md`](../SECURITY.md) and [`solutions.md`](solutions.md) §5, §13.
+Not yet done: authentication on the websocket (OCPP security profile 1), a real charger. See [`SECURITY.md`](../SECURITY.md) and [`solutions.md`](solutions.md) §5, §13.
 
 ---
 
@@ -203,9 +204,11 @@ Rules baked into the scripts: signal and sessions come from the same grid; `kwh_
 
 ## 7. Contracts
 
-- REST bodies and WS frames: `noonshift/models.py` → `docs/openapi.json`, `docs/ws-frames.json` (regenerated on start; CI fails if a diff is uncommitted).
-- Scheduler: `solve(cars, site, signal, tariff, now) → {connector_id: [kW × 288]}`, `impact(...)`, `price(...)` — signatures frozen; extras are keyword-only.
-- WS frames: `PlanMsg` (per-connector kW plan, site kW, mode, reason), `MeterMsg` (per-connector live kW, kWh, status), `EventMsg` (plug_in, unplug, done, boost, day_reset, …).
+- REST bodies and WS frames: `noonshift/models.py` → `docs/openapi.json`, `docs/ws-frames.json` (regenerated on start; CI fails if a diff is uncommitted). Every change since the first release has been **additive**: new optional fields, new endpoints, never a renamed or removed field.
+- Scheduler: `solve(cars, site, signal, tariff, now) → {connector_id: [kW × 288]}`, `impact(plan, baseline, signal, tariff, *, health=False)`, `price(slack_hours, *, r, saving_usd, kwh, alpha, urgent)` — positional signatures frozen; extras are keyword-only. Per-car optional keys: `floor_alpha`, `priority`, `boost`.
+- REST (additive since WP1): `POST /sessions` accepts `vehicle{model, battery_kwh, max_kw}`, `soc_now`, `target_soc`; `POST /sessions/{id}/urgency {level, leave_at?}` (`/boost` = `now`); `SessionOut` carries `urgency`, `kwh_needed`, `need_confidence`, `max_kw`; `StatusOut` carries `safe_share_kw`, `waiting`, `connectors_asap`, `contracted_peak_kw`, `package`, `employee_rate_usd_per_kwh`, `driver_share`, `noonshift_share`, `signal_kind/source`, `tariff_name`, `ladder`; `ImpactOut` carries `renewable_share`, `health_usd`; `GET /sites/{id}/impact.csv` is the hourly ledger; `POST /assist` / `GET /assist/suggestions` (§9).
+- WS frames: `PlanMsg` (per-connector kW plan, site kW, mode, reason), `MeterMsg` (per-connector live kW, kWh, status, `urgency`, `idle_min`, `need_confidence`, `p_max_kw`, `cap_observed`, `asap`, `move_by`; site `waiting`), `EventMsg` (plug_in, unplug, done, boost, urgency, cap_observed, move_by, day_reset, …).
+- Auth: `OPS_TOKEN` bearer on `/assist*` and `/demo/*` when set; driver and read endpoints are open.
 
 ---
 
@@ -219,3 +222,29 @@ Rules baked into the scripts: signal and sessions come from the same grid; `kwh_
 | `tests/test_day.py` | a full simulated day through `api.step()` plus the four demo scenarios, on a frozen fixture day |
 | `scripts/smoke.py` | driver REST → `/ws` → ops, against a live server (CI) |
 | `scripts/prove.py` | the headline number, gated |
+| `tests/test_assist.py` | the assistant: snapshot cap and keys, every starter answered offline, the parser, the per-IP limit, cache reuse (skipped without a key) |
+
+---
+
+## 9. Operator assistant
+
+A facilities manager types a question in the ops dashboard; the answer is grounded in **today's live state** and a **static knowledge file**, and it never acts — each answer ends with up to two *label → page* buttons the operator clicks.
+
+```mermaid
+sequenceDiagram
+    participant UI as AssistDrawer
+    participant API as POST /assist
+    participant Snap as assist.snapshot()
+    participant M as claude-opus-5
+    UI->>API: question, last 6 turns, page
+    API->>Snap: build from S (≤ 15 connector rows, events, signal, tariff)
+    API->>M: system = [rules, knowledge] (cached) · user = <site_state> + question
+    M-->>API: answer · label -> /ops/page · [sources: …]
+    API-->>UI: {answer, sources, suggested_actions} — or the template fallback when there is no key
+```
+
+- **Snapshot** (`noonshift/assist.py: snapshot()`): built from the same REST builders the dashboard uses, so the numbers agree; the 15 most relevant connectors (at risk → urgent → charging → done → by slack) plus counts; capped at ~6 k tokens.
+- **Knowledge** (`noonshift/assist_knowledge.md`): hand-condensed from this file, the README, business §0b/§4b/§7b, metrics §2/§3/§6 and the hard questions. Nothing time-varying lives in it, so the two system blocks stay prompt-cache hits.
+- **Model call**: `claude-opus-5`, adaptive thinking, low effort, 1024 output tokens. Errors most-specific first: bad or missing key → fallback; rate limit → 429 with `Retry-After`; connection or 5xx → fallback flagged `degraded`.
+- **Fallback** (`fallback()`): keyword-routed templates filled from the snapshot (a bay by id, at-risk sessions, the ladder walk, safe share, CO₂ → km, urgency bands, queue and move-by, money per §7b, load vs block/feed, the clean window). The demo needs neither a key nor the internet; the UI labels these "offline answer".
+- **Limits**: 10 questions per minute per client IP; `OPS_TOKEN` bearer when set.

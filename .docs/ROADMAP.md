@@ -10,9 +10,9 @@ This file says what exists today, what is missing, and in what order to build it
 
 | Piece | Status | What it does |
 |---|---|---|
-| Brain (`noonshift/scheduler.py`) | Exists, 53 tests | Decides, every 5 minutes, how much power each plugged-in car gets so every car is full by its ready-by time, the site never exceeds its feed, and charging lands in the cleanest / cheapest slots. |
-| Engine (`noonshift/api.py`, `sim.py`) | Exists | Simulated day of 60 chargers, live plan/meter/event feed on `/ws`, four demo buttons, fail-safe ladder (live signal → cached → tariff → deadline → full power). |
-| Ops dashboard (`web/`) | Exists, live | Gantt of every car, sessions, alerts, site load vs limit, impact, fail-safe banner. |
+| Brain (`noonshift/scheduler.py`) | Exists, 92 tests across the suite | Decides, every 5 minutes, how much power each plugged-in car gets so every car is full by its ready-by time, the site never exceeds its feed, and charging lands in the cleanest / cheapest slots. |
+| Engine (`noonshift/api.py`, `sim.py`) | Exists | Simulated day of 60 chargers, live plan/meter/event feed on `/ws`, four demo buttons, fail-safe ladder (live signal → cached → tariff → deadline → static safe share), urgency bands, queue with move-by, observation guard, hourly ledger. |
+| Ops dashboard (`web/`) | Exists, live | Facilities-manager console: load vs contracted peak, Gantt with urgent/ASAP/move-by marks, urgency control, CO₂-first impact with EPA equivalents and ledger export, fail-safe banner in plain words, operator assistant drawer. |
 | Driver app (`wattwise/`) | Exists, live | "Ready by when?" → plan window → live kW → receipt. Price tier shown next to the choice. |
 | End-to-end check (`scripts/smoke.py`) | Exists | Driver actions → backend → what the ops screen sees. Prints `SMOKE OK`. |
 | Pitch (`pitch/`, `business.md`, `metrics.md`) | Exists | Deck outline, 4-minute demo script, hard questions, business model. |
@@ -22,12 +22,14 @@ What the two apps exchange **today**:
 | Direction | Data | Status |
 |---|---|---|
 | Driver → Noonshift | connector (bay), ready-by time, kWh wanted | Exists (`POST /sessions`) |
-| Driver → Noonshift | Boost ("charge now") | Exists (`POST /sessions/{id}/boost`) |
-| Driver → Noonshift | a *later or earlier* ready-by time (same bay = update) | Partly (endpoint accepts it; no rules around it, no UI) |
+| Driver → Noonshift | Boost ("charge now") | Exists (`POST /sessions/{id}/boost` = urgency `now`) |
+| Driver → Noonshift | "Leaving now" / "Leaving soon" + time / "Prioritise" — three bands, one price | Exists (`POST /sessions/{id}/urgency`); ops UI exists, driver UI pending |
+| Driver → Noonshift | car model / battery / max kW, SoC now, target SoC | Exists (`POST /sessions` `vehicle`, `soc_now`, `target_soc`); driver UI pending |
 | Noonshift → Driver | plan window, ETA, price tier, live kW, kWh delivered, "grid cleaner than X % of today", $ and kg saved (estimate) | Exists |
 | Noonshift → Driver | today's hourly grid carbon + tariff (for the "why this hour" graph) | Exists (`GET /grid/signal`) |
 | Noonshift → Ops | every plan, every meter tick, every event; site status, impact incl. peak vs charge-now peak | Exists |
-| Ops → Noonshift | demo buttons; boost a connector | Exists |
+| Ops → Noonshift | demo buttons; urgency on a driver's behalf | Exists |
+| Ops ↔ Noonshift | questions about today's site, answered from live state + docs | Exists (`POST /assist`) |
 
 ---
 
