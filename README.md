@@ -126,21 +126,31 @@ Four buttons on the ops dashboard, each one a `POST /demo/*`:
 
 Script for a 4-minute run: [`.docs/pitch/demo-script.md`](.docs/pitch/demo-script.md).
 
+**Ask the site a question.** The ops dashboard has an *Ask* button: *"why is bay c07 only getting 1.4 kW?"*, *"what happens if the grid API dies?"*, *"how much CO₂ did we save today, in km?"*. The answer comes from a snapshot of the live state plus a hand-written knowledge file (`noonshift/assist_knowledge.md`), via `claude-opus-5` with a cached system prefix when `ANTHROPIC_API_KEY` is set, and from deterministic templates filled with the same snapshot when it is not — so the demo never depends on a key or the internet. It explains and suggests (each answer ends with up to two *label → page* buttons); it never presses anything.
+
 ## API
 
 Interactive docs at `http://localhost:8000/docs`. Contract files are committed and CI-checked: [`docs/openapi.json`](docs/openapi.json), [`docs/ws-frames.json`](docs/ws-frames.json).
 
 ```
-POST /sessions                    {connector_id, departure_at, kwh_needed?}
-POST /sessions/{id}/boost         charge now at today's rate
+GET  /price                       what a ready-by would cost before plugging in (shared-savings estimate)
+POST /sessions                    {connector_id, departure_at, kwh_needed?, vehicle?, soc_now?, target_soc?}
+POST /sessions/{id}/urgency       {level: now | soon | priority, leave_at?} — three bands, one price (R)
+POST /sessions/{id}/boost         alias of urgency level "now"
 GET  /sessions/{id}/live          live kW, grid-cleanliness percentile, $ and kg saved so far
 GET  /sites/{id}/plan             per-connector 5-min kW profile
-GET  /sites/{id}/status           site kW vs feed vs block, ladder mode
-GET  /sites/{id}/impact           kWh, $, kg CO₂ vs charge-immediately
+GET  /sites/{id}/status           site kW vs feed / block / contracted peak, ladder mode, safe share, waiting, package, R
+GET  /sites/{id}/impact           kWh, $, kg CO₂ vs charge-immediately, renewable-hour share, health $
+GET  /sites/{id}/impact.csv       hourly ledger behind every carbon claim (day, hour, kWh, gCO₂/kWh, kgCO₂, signal)
+GET  /grid/signal                 today's hourly carbon + tariff
 GET  /grid/flex-forecast          shiftable load per hour (for the grid operator)
 POST /openadr/events              demand-response event → less headroom in those slots
-WS   /ws                          plan / meter / event frames
+POST /assist                      operator assistant: {question, history?, page?} → {answer, sources, suggested_actions}
+GET  /assist/suggestions          six starter questions built from the current state
+WS   /ws                          plan / meter / event frames (additive only)
 ```
+
+Operator endpoints (`/assist*`, `/demo/*`) accept a bearer token when `OPS_TOKEN` is set; unset = open (demo).
 
 ## Repository layout
 
