@@ -11,7 +11,9 @@ All notable changes to this project. Format follows [Keep a Changelog](https://k
 - **WP4 — evidence scripts.** `prove.py --policy timer | --block | --feed | --forecast`, `fit.py` (site fit verdict), `replay_days.py`, WattTime forecast + health-damage fetch (unverified without credentials), `impact(..., health=True)`.
 - **WP5 — facilities-manager dashboard.** CO₂ first, every number a live field, `UrgencyControl`, fail-safe banner in plain words, hourly ledger export `GET /sites/{id}/impact.csv`, `StatusOut`/`ImpactOut` site-card fields.
 - **WP6 — operator assistant.** `POST /assist`, `GET /assist/suggestions`, `noonshift/assist.py` + `assist_knowledge.md`, chat drawer in the ops app; deterministic fallback without a key; `OPS_TOKEN` bearer on operator endpoints.
-- `.docs/implementation-plan.md` — the refined plan for WP1–WP7 with every assumption and deviation.
+- `scripts/scenarios.py` — ten real-world scenarios against the live backend, told as stories, checked (36 promises) and recorded to `docs/scenarios/run.{md,json}`.
+- `POST /sessions/{id}/unplug` — the driver pulls the plug; returns the receipt, re-solves without the car.
+- Operator assistant: a bay named in the question is always in the snapshot; an "early leaver" template.
 - Open-source scaffolding: `LICENSE` (MIT), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue and PR templates, this changelog.
 - `.docs/ARCHITECTURE.md` — control loop, LP constraints, fail-safe ladder and OCPP flow, with Mermaid diagrams.
 - `.docs/business.md` — scoped to the corporate-building customer (§0b: who pays, value stack; §9b: the deal, employee incentives when charging is free); break points, edge cases where the scheduler is worse than a dumb charger, the shared-savings pricing formula (§7b), the emergency scale (§4b), 4-tier benefits.
@@ -19,6 +21,8 @@ All notable changes to this project. Format follows [Keep a Changelog](https://k
 - `.docs/solutions.md` — real-world fixes for every open problem, mapped to code locations; two findings from the data (drivers under-state their stay; `prove.py` plans with perfect foresight).
 
 ### Fixed
+- A burst of plug-ins over the API could draw the static share each on top of a plan that already filled the feed for one sim-minute (the control loop ticks while the handler awaits the threaded re-solve): 20 arrivals = +26 kW over headroom, caught by `scripts/scenarios.py`. A newcomer's provisional limit is now its share out of headroom nobody holds yet (full share after 15 min if no plan ever lands).
+- `meter_history()` anchors a session's record to the first minute it actually records, so a re-solve that lands a tick late no longer shifts the samples a minute early (a 151.8 kW "peak" on a 150 kW feed that never happened).
 - `site_peaks()` / `hourly_ledger()` dropped the start-minute offset of mid-slot plug-ins and could report a slot peak above the feed that never happened.
 
 ### Changed

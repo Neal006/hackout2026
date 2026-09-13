@@ -1,0 +1,1226 @@
+{
+ "meta": {
+  "api": "http://127.0.0.1:8001",
+  "site": {
+   "mode": "live",
+   "last_solve_at": "2026-04-14T06:15:00",
+   "connectors_active": 0,
+   "feed_kw": 150.0,
+   "block_kw": 100.0,
+   "sim_time": "2026-04-14T06:17:00",
+   "safe_share_kw": 1.833,
+   "waiting": 0,
+   "connectors_asap": [
+    "c41",
+    "c42"
+   ],
+   "n_connectors": 60,
+   "p_max_kw": 7.0,
+   "contracted_peak_kw": 150.0,
+   "package": "pilot",
+   "employee_rate_usd_per_kwh": 0.25,
+   "driver_share": 0.5,
+   "noonshift_share": 0.2,
+   "signal_kind": "marginal",
+   "signal_source": "WattTime v3 co2_moer",
+   "tariff_name": "PG&E BEV-2-S (approx)",
+   "ladder": {
+    "live": true,
+    "cached": true,
+    "tariff": true,
+    "deadline": true
+   }
+  },
+  "speed": 119.43690180427346,
+  "zero_hours": [
+   9,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17
+  ],
+  "started": "2026-09-13T08:16:30",
+  "impact": {
+   "from": "2026-04-14T00:00:00",
+   "to": "2026-04-15T00:00:00",
+   "sessions": 67,
+   "kwh": 318.25,
+   "saved_usd": 1.43,
+   "saved_kgco2": 13.91,
+   "peak_kw": 149.9,
+   "baseline_peak_kw": 150.0,
+   "renewable_share": 0.5556,
+   "health_usd": null,
+   "note": "estimate vs charge-immediately baseline"
+  },
+  "worst_overshoot_kw": 0.0,
+  "meter_frames": 335,
+  "ended": "2026-09-13T08:19:23"
+ },
+ "scenarios": [
+  {
+   "n": 1,
+   "title": "Priya's normal day",
+   "story": "Priya parks at the office, taps the pre-filled 'Leaving at 17:30?', asks for 12 kWh. She wants her car full by then; the site wants that energy in the zero-carbon hours and never above the feed.",
+   "sim_start": "2026-04-14T06:17",
+   "steps": [
+    {
+     "sim": "06:17",
+     "who": "driver",
+     "text": "previews the price for a ready-by 8 h out on bay c60",
+     "request": {
+      "method": "GET",
+      "path": "/price?departure_at=2026-04-14T14:17:00&kwh_needed=12"
+     },
+     "response": {
+      "status": 200,
+      "slack_hours": 6.29,
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.25
+      },
+      "tiers": [
+       {
+        "tier": "green",
+        "min_slack_hours": 4.0,
+        "usd_per_kwh": 0.25
+       },
+       {
+        "tier": "standard",
+        "min_slack_hours": 1.0,
+        "usd_per_kwh": 0.25
+       },
+       {
+        "tier": "boost",
+        "min_slack_hours": 0.0,
+        "usd_per_kwh": 0.25
+       }
+      ]
+     }
+    },
+    {
+     "sim": "06:17",
+     "who": "driver",
+     "text": "plugs in: 12 kWh by 14:17",
+     "request": {
+      "method": "POST",
+      "path": "/sessions",
+      "body": {
+       "connector_id": "c60",
+       "departure_at": "2026-04-14T14:17:00",
+       "kwh_needed": 12
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1001,
+      "connector_id": "c60",
+      "plan": {
+       "start": "2026-04-14T06:20:00",
+       "end": "2026-04-14T10:15:00",
+       "ready_by": "2026-04-14T14:17:00"
+      },
+      "eta": "2026-04-14T10:15:00",
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.2358
+      },
+      "boost": false,
+      "urgency": null,
+      "kwh_needed": 12.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "06:23",
+     "who": "system",
+     "text": "plan window 06:20\u201310:15, ready by 14:17; 58% of her planned energy lands in zero-carbon hours (charging right now: 0%)"
+    },
+    {
+     "sim": "07:18",
+     "who": "driver",
+     "text": "checks the app an hour in",
+     "request": {
+      "method": "GET",
+      "path": "/sessions/1001/live"
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1001,
+      "kw_now": 0.0,
+      "grid_percentile": 1.0,
+      "kwh_delivered": 3.5,
+      "kwh_needed": 12.0,
+      "saved_usd": 0.3167,
+      "saved_kgco2": 2.8517
+     }
+    },
+    {
+     "sim": "07:18",
+     "who": "driver",
+     "text": "receipt so far: $0.3167 and 2.8517 kg CO2 saved (estimate) \u2014 grid cleaner than 1.0% of today"
+    }
+   ],
+   "checks": [
+    {
+     "name": "plan ends before her stated departure",
+     "ok": true,
+     "detail": "10:15 <= 14:17"
+    },
+    {
+     "name": "price never above R",
+     "ok": true,
+     "detail": "$0.2358 vs R $0.25 (green)"
+    },
+    {
+     "name": "more of her energy in clean hours than charging immediately",
+     "ok": true,
+     "detail": "58% vs 0%"
+    },
+    {
+     "name": "first-hour floor: >= min(need, 3.5 kWh) after 60 min",
+     "ok": true,
+     "detail": "3.50 kWh"
+    }
+   ],
+   "frame_mark": 10,
+   "assistant": {
+    "question": "what is bay c60 doing right now?",
+    "answer": "Bay c60 is at 0.0 kW, 3.5 of 12.0 kWh delivered \u2014 deferred: an empty slot in its plan. It has 5.77 h of slack before 14:17, so the plan moves the bulk of its 12.0 kWh to cleaner or cheaper slots inside that deadline (today's zero-carbon hours are 09:00\u201318:00); next slots [0.0, 0.0, 0.0, 0.0, 0.0, 0.0] kW. Not a fault.",
+    "sources": [
+     "The scheduler"
+    ],
+    "suggested_actions": [
+     {
+      "label": "Open the bay",
+      "path": "/ops/chargers"
+     },
+     {
+      "label": "See the plan",
+      "path": "/ops/schedules"
+     }
+    ],
+    "fallback": true,
+    "degraded": false,
+    "usage": null
+   }
+  },
+  {
+   "n": 2,
+   "title": "Maya's sick kid \u2014 Leaving now",
+   "story": "Maya plugged in for the day. School calls mid-morning: come now. She taps 'Leaving now'. Promise: full power from the next slot, at today's rate, no premium \u2014 and nobody else loses their floor.",
+   "sim_start": "2026-04-14T07:18",
+   "steps": [
+    {
+     "sim": "07:18",
+     "who": "driver",
+     "text": "had plugged in for 6 h wanting 10 kWh",
+     "request": {
+      "method": "POST",
+      "path": "/sessions",
+      "body": {
+       "connector_id": "c59",
+       "departure_at": "2026-04-14T13:18:00",
+       "kwh_needed": 10
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1002,
+      "connector_id": "c59",
+      "plan": {
+       "start": "2026-04-14T07:40:00",
+       "end": "2026-04-14T10:00:00",
+       "ready_by": "2026-04-14T13:18:00"
+      },
+      "eta": "2026-04-14T10:00:00",
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.2369
+      },
+      "boost": false,
+      "urgency": null,
+      "kwh_needed": 10.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "07:19",
+     "who": "system",
+     "text": "bay c59 is deferred to a cleaner hour, drawing 0.0 kW when the phone rings"
+    },
+    {
+     "sim": "07:19",
+     "who": "driver",
+     "text": "taps 'Leaving now'",
+     "request": {
+      "method": "POST",
+      "path": "/sessions/1002/urgency",
+      "body": {
+       "level": "now"
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1002,
+      "connector_id": "c59",
+      "plan": {
+       "start": "2026-04-14T07:15:00",
+       "end": "2026-04-14T08:45:00",
+       "ready_by": "2026-04-14T07:19:00"
+      },
+      "eta": "2026-04-14T08:45:00",
+      "price": {
+       "tier": "boost",
+       "usd_per_kwh": 0.25
+      },
+      "boost": true,
+      "urgency": "now",
+      "kwh_needed": 10.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "07:22",
+     "who": "system",
+     "text": "bay c59: 0.0 kW before -> 7.0 kW now; 'boost' event on the ops feed"
+    }
+   ],
+   "checks": [
+    {
+     "name": "full power within two slots",
+     "ok": true,
+     "detail": "7.0 kW"
+    },
+    {
+     "name": "pays exactly R, no premium",
+     "ok": true,
+     "detail": "$0.25"
+    },
+    {
+     "name": "ops feed shows the boost event and flag",
+     "ok": true,
+     "detail": ""
+    }
+   ],
+   "frame_mark": 92,
+   "assistant": {
+    "question": "what does boost do to the other cars?",
+    "answer": "Three driver buttons, one price. 'Leaving now' sets the deadline to now: full power immediately, first claim on headroom. 'Leaving soon' takes a time (15 min or later) and the plan fills the cleanest slots inside it. 'Prioritise' keeps the deadline but raises the car's floor to 90 % of pro-rata and doubles its weight, so it wins ties. Every urgent session pays the traditional rate R = $0.25/kWh and forfeits the shared-savings discount \u2014 that is why nobody presses it to jump the queue. 1 urgent right now.",
+    "sources": [
+     "Urgency \u2014 three bands, one price"
+    ],
+    "suggested_actions": [
+     {
+      "label": "Sessions",
+      "path": "/ops/sessions"
+     }
+    ],
+    "fallback": true,
+    "degraded": false,
+    "usage": null
+   }
+  },
+  {
+   "n": 3,
+   "title": "Dev's meeting across town \u2014 Leaving soon",
+   "story": "Dev said 6 h, then a client moves the meeting up: he must leave in 90 minutes with 8 kWh. He taps 'Leaving soon' and picks the time. Promise: the new time becomes the deadline, the plan fills the cleanest slots before it, price R.",
+   "sim_start": "2026-04-14T07:22",
+   "steps": [
+    {
+     "sim": "07:22",
+     "who": "driver",
+     "text": "had plugged in for 6 h wanting 8 kWh",
+     "request": {
+      "method": "POST",
+      "path": "/sessions",
+      "body": {
+       "connector_id": "c58",
+       "departure_at": "2026-04-14T13:22:00",
+       "kwh_needed": 8
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1003,
+      "connector_id": "c58",
+      "plan": {
+       "start": "2026-04-14T07:40:00",
+       "end": "2026-04-14T09:40:00",
+       "ready_by": "2026-04-14T13:22:00"
+      },
+      "eta": null,
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.2387
+      },
+      "boost": false,
+      "urgency": null,
+      "kwh_needed": 8.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "07:22",
+     "who": "driver",
+     "text": "taps 'Leaving soon' at 08:52",
+     "request": {
+      "method": "POST",
+      "path": "/sessions/1003/urgency",
+      "body": {
+       "level": "soon",
+       "leave_at": "2026-04-14T08:52:00"
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1003,
+      "connector_id": "c58",
+      "plan": {
+       "start": "2026-04-14T07:20:00",
+       "end": "2026-04-14T08:40:00",
+       "ready_by": "2026-04-14T08:52:00"
+      },
+      "eta": "2026-04-14T08:30:00",
+      "price": {
+       "tier": "boost",
+       "usd_per_kwh": 0.25
+      },
+      "boost": false,
+      "urgency": "soon",
+      "kwh_needed": 8.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "07:22",
+     "who": "system",
+     "text": "new plan 07:20\u201308:40: 0% of the energy in zero-carbon slots inside the 90 min (charge-now: 0%)"
+    },
+    {
+     "sim": "08:52",
+     "who": "driver",
+     "text": "walks to the car at the time he said",
+     "request": {
+      "method": "GET",
+      "path": "/sessions/1003/live"
+     },
+     "response": {
+      "status": "ended",
+      "session_id": 1003,
+      "kw_now": 0.0,
+      "grid_percentile": 57.6,
+      "kwh_delivered": 7.837,
+      "kwh_needed": 8.0,
+      "saved_usd": 0.0,
+      "saved_kgco2": -0.0578
+     }
+    }
+   ],
+   "checks": [
+    {
+     "name": "ready-by moved to the chosen time",
+     "ok": true,
+     "detail": "08:52"
+    },
+    {
+     "name": "pays exactly R",
+     "ok": true,
+     "detail": "$0.25"
+    },
+    {
+     "name": "the 8 kWh are in the car by the new time",
+     "ok": true,
+     "detail": "7.84 / 8 kWh at 08:52"
+    }
+   ],
+   "frame_mark": 101
+  },
+  {
+   "n": 4,
+   "title": "Aisha is on call \u2014 Prioritise",
+   "story": "Aisha, a nurse, might be paged. She keeps her 17:30 but taps 'Prioritise'. Ben plugs in next to her with the same need and no button. Promise: her deadline is unchanged, she pays R, she is held to 90 % of pro-rata (Ben to 50 %), and when the site is short her allowed shortfall is half of anyone else's. On a quiet site both simply get charged.",
+   "sim_start": "2026-04-14T08:52",
+   "steps": [
+    {
+     "sim": "08:52",
+     "who": "driver",
+     "text": "Aisha plugs in on c57: 12 kWh by 14:52",
+     "request": {
+      "method": "POST",
+      "path": "/sessions",
+      "body": {
+       "connector_id": "c57",
+       "departure_at": "2026-04-14T14:52:00",
+       "kwh_needed": 12
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1004,
+      "connector_id": "c57",
+      "plan": {
+       "start": "2026-04-14T09:00:00",
+       "end": "2026-04-14T11:05:00",
+       "ready_by": "2026-04-14T14:52:00"
+      },
+      "eta": "2026-04-14T11:05:00",
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.2481
+      },
+      "boost": false,
+      "urgency": null,
+      "kwh_needed": 12.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "08:52",
+     "who": "driver",
+     "text": "Ben plugs in on c58: same 12 kWh by 14:52",
+     "request": {
+      "method": "POST",
+      "path": "/sessions",
+      "body": {
+       "connector_id": "c58",
+       "departure_at": "2026-04-14T14:52:00",
+       "kwh_needed": 12
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1005,
+      "connector_id": "c58",
+      "plan": {
+       "start": "2026-04-14T09:00:00",
+       "end": "2026-04-14T11:05:00",
+       "ready_by": "2026-04-14T14:52:00"
+      },
+      "eta": "2026-04-14T11:05:00",
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.2481
+      },
+      "boost": false,
+      "urgency": null,
+      "kwh_needed": 12.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "08:52",
+     "who": "driver",
+     "text": "Aisha taps 'Prioritise'",
+     "request": {
+      "method": "POST",
+      "path": "/sessions/1004/urgency",
+      "body": {
+       "level": "priority"
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1004,
+      "connector_id": "c57",
+      "plan": {
+       "start": "2026-04-14T09:00:00",
+       "end": "2026-04-14T11:05:00",
+       "ready_by": "2026-04-14T14:52:00"
+      },
+      "eta": "2026-04-14T11:05:00",
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.25
+      },
+      "boost": false,
+      "urgency": "priority",
+      "kwh_needed": 12.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "09:52",
+     "who": "system",
+     "text": "after 60 min: Aisha 5.23 kWh, Ben 5.82 kWh (pro-rata after 1 of 6 h = 2.0 kWh; floors 90 % / 50 %; both also hold the 3.5 kWh first-hour floor)"
+    },
+    {
+     "sim": "09:52",
+     "who": "system",
+     "text": "priority costs the other drivers nothing unless the site is short: today both are well above their floors"
+    }
+   ],
+   "checks": [
+    {
+     "name": "deadline unchanged",
+     "ok": true,
+     "detail": "14:52"
+    },
+    {
+     "name": "pays exactly R",
+     "ok": true,
+     "detail": "$0.25"
+    },
+    {
+     "name": "Aisha at or above 90 % of pro-rata",
+     "ok": true,
+     "detail": "5.23 >= 1.8"
+    },
+    {
+     "name": "Ben at or above 50 % of pro-rata",
+     "ok": true,
+     "detail": "5.82 >= 1.0"
+    }
+   ],
+   "frame_mark": 229,
+   "assistant": {
+    "question": "what does prioritise do?",
+    "answer": "Three driver buttons, one price. 'Leaving now' sets the deadline to now: full power immediately, first claim on headroom. 'Leaving soon' takes a time (15 min or later) and the plan fills the cleanest slots inside it. 'Prioritise' keeps the deadline but raises the car's floor to 90 % of pro-rata and doubles its weight, so it wins ties. Every urgent session pays the traditional rate R = $0.25/kWh and forfeits the shared-savings discount \u2014 that is why nobody presses it to jump the queue. 2 urgent right now.",
+    "sources": [
+     "Urgency \u2014 three bands, one price"
+    ],
+    "suggested_actions": [
+     {
+      "label": "Sessions",
+      "path": "/ops/sessions"
+     }
+    ],
+    "fallback": true,
+    "degraded": false,
+    "usage": null
+   }
+  },
+  {
+   "n": 5,
+   "title": "Sam skips the form",
+   "story": "Sam plugs in and ignores the app: the default 'Leaving at 17:30?' stands and no kWh is typed. Promise: the site still plans for him \u2014 need from this bay's history, else the site median \u2014 and says how confident it is.",
+   "sim_start": "2026-04-14T09:52",
+   "steps": [
+    {
+     "sim": "09:52",
+     "who": "driver",
+     "text": "plugs in on c56, types nothing",
+     "request": {
+      "method": "POST",
+      "path": "/sessions",
+      "body": {
+       "connector_id": "c56",
+       "departure_at": "2026-04-14T17:52:00"
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1006,
+      "connector_id": "c56",
+      "plan": {
+       "start": "2026-04-14T09:50:00",
+       "end": "2026-04-14T11:30:00",
+       "ready_by": "2026-04-14T17:52:00"
+      },
+      "eta": "2026-04-14T11:30:00",
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.25
+      },
+      "boost": false,
+      "urgency": null,
+      "kwh_needed": 9.1,
+      "need_confidence": "site",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "09:52",
+     "who": "system",
+     "text": "need estimated at 9.1 kWh (confidence: site); plan 09:50\u201311:30"
+    }
+   ],
+   "checks": [
+    {
+     "name": "a need was estimated",
+     "ok": true,
+     "detail": "9.1 kWh"
+    },
+    {
+     "name": "confidence is history or site, never 'declared'",
+     "ok": true,
+     "detail": "site"
+    },
+    {
+     "name": "a plan exists",
+     "ok": true,
+     "detail": ""
+    }
+   ],
+   "frame_mark": 326
+  },
+  {
+   "n": 6,
+   "title": "Ravi's plug-in hybrid",
+   "story": "Ravi's PHEV takes 3.3 kW at most on a 7 kW bay; the app asks for the car once and remembers it. He is at 70 %, wants 90 % of a 40 kWh pack. Promise: the plan never asks the car for more than it can take, and the need comes from the SoC.",
+   "sim_start": "2026-04-14T09:52",
+   "steps": [
+    {
+     "sim": "09:52",
+     "who": "driver",
+     "text": "plugs in on c56: PHEV, 40 kWh pack, max 3.3 kW, 70 % -> 90 %",
+     "request": {
+      "method": "POST",
+      "path": "/sessions",
+      "body": {
+       "connector_id": "c56",
+       "departure_at": "2026-04-14T16:52:00",
+       "vehicle": {
+        "model": "PHEV",
+        "battery_kwh": 40,
+        "max_kw": 3.3
+       },
+       "soc_now": 0.7,
+       "target_soc": 0.9
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1006,
+      "connector_id": "c56",
+      "plan": {
+       "start": "2026-04-14T09:50:00",
+       "end": "2026-04-14T12:20:00",
+       "ready_by": "2026-04-14T16:52:00"
+      },
+      "eta": "2026-04-14T12:20:00",
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.25
+      },
+      "boost": false,
+      "urgency": null,
+      "kwh_needed": 8.0,
+      "need_confidence": "declared",
+      "max_kw": 3.3
+     }
+    },
+    {
+     "sim": "10:00",
+     "who": "system",
+     "text": "need 8.0 kWh (declared); planner cap 3.3 kW; plan peak 3.3 kW; meter 3.3 kW"
+    }
+   ],
+   "checks": [
+    {
+     "name": "need = (0.9 - 0.7) x 40 = 8 kWh",
+     "ok": true,
+     "detail": "8.0"
+    },
+    {
+     "name": "plan never exceeds the car's 3.3 kW",
+     "ok": true,
+     "detail": "peak 3.3 kW"
+    },
+    {
+     "name": "meter never exceeds 3.3 kW",
+     "ok": true,
+     "detail": "3.3 kW"
+    }
+   ],
+   "frame_mark": 326,
+   "assistant": {
+    "question": "why is bay c56 only getting 3.3 kW?",
+    "answer": "Bay c56 is at 3.3 kW, 0.44 of 8.0 kWh delivered \u2014 in its planned window: next slots [3.3, 3.3, 3.3, 3.3, 3.3, 3.3] kW, deadline 16:52, slack 4.58 h.",
+    "sources": [
+     "The scheduler"
+    ],
+    "suggested_actions": [
+     {
+      "label": "Open the bay",
+      "path": "/ops/chargers"
+     },
+     {
+      "label": "See the plan",
+      "path": "/ops/schedules"
+     }
+    ],
+    "fallback": true,
+    "degraded": false,
+    "usage": null
+   }
+  },
+  {
+   "n": 7,
+   "title": "The delivery van on the fleet bay",
+   "story": "Facilities marked bays c41/c42 as fleet bays: a van that cannot leave is lost revenue, not an inconvenience. The van plugs into c41 with a vague '5 h'. Promise: full power immediately, whatever the slack, and the ops screen marks the bay ASAP.",
+   "sim_start": "2026-04-14T10:00",
+   "steps": [
+    {
+     "sim": "10:00",
+     "who": "driver",
+     "text": "van plugs into c41: 20 kWh, 5 h",
+     "request": {
+      "method": "POST",
+      "path": "/sessions",
+      "body": {
+       "connector_id": "c41",
+       "departure_at": "2026-04-14T15:00:00",
+       "kwh_needed": 20
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1007,
+      "connector_id": "c41",
+      "plan": {
+       "start": "2026-04-14T10:00:00",
+       "end": "2026-04-14T12:55:00",
+       "ready_by": "2026-04-14T15:00:00"
+      },
+      "eta": "2026-04-14T12:55:00",
+      "price": {
+       "tier": "standard",
+       "usd_per_kwh": 0.25
+      },
+      "boost": false,
+      "urgency": null,
+      "kwh_needed": 20.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "10:03",
+     "who": "system",
+     "text": "plan first slot 7.0 kW; meter 7.0 kW; asap=True (boost=False: nobody pressed anything)"
+    }
+   ],
+   "checks": [
+    {
+     "name": "full power from the first slot",
+     "ok": true,
+     "detail": "7.0 kW"
+    },
+    {
+     "name": "meter at full power",
+     "ok": true,
+     "detail": "7.0 kW"
+    },
+    {
+     "name": "ops sees the ASAP bay flag",
+     "ok": true,
+     "detail": ""
+    }
+   ],
+   "frame_mark": 340
+  },
+  {
+   "n": 8,
+   "title": "Tom leaves early",
+   "story": "Tom said 17:00; something comes up and he unplugs after about an hour without telling anyone. Promise: the floors mean he leaves with a usable charge, the receipt says plainly how far short of the stated need he is, and the plan re-solves without him.",
+   "sim_start": "2026-04-14T10:03",
+   "steps": [
+    {
+     "sim": "10:03",
+     "who": "driver",
+     "text": "Tom plugs in on c55: 15 kWh by 18:03",
+     "request": {
+      "method": "POST",
+      "path": "/sessions",
+      "body": {
+       "connector_id": "c55",
+       "departure_at": "2026-04-14T18:03:00",
+       "kwh_needed": 15
+      }
+     },
+     "response": {
+      "status": "charging",
+      "session_id": 1008,
+      "connector_id": "c55",
+      "plan": {
+       "start": "2026-04-14T10:00:00",
+       "end": "2026-04-14T12:35:00",
+       "ready_by": "2026-04-14T18:03:00"
+      },
+      "eta": "2026-04-14T12:30:00",
+      "price": {
+       "tier": "green",
+       "usd_per_kwh": 0.25
+      },
+      "boost": false,
+      "urgency": null,
+      "kwh_needed": 15.0,
+      "need_confidence": "declared",
+      "max_kw": null
+     }
+    },
+    {
+     "sim": "11:05",
+     "who": "driver",
+     "text": "Tom pulls the plug an hour in, without a word",
+     "request": {
+      "method": "POST",
+      "path": "/sessions/1008/unplug"
+     },
+     "response": {
+      "status": "ended",
+      "session_id": 1008,
+      "kw_now": 0.0,
+      "grid_percentile": 57.6,
+      "kwh_delivered": 4.9,
+      "kwh_needed": 15.0,
+      "saved_usd": -0.0,
+      "saved_kgco2": 0.7966
+     }
+    },
+    {
+     "sim": "11:07",
+     "who": "system",
+     "text": "receipt: 4.90 of 15.0 kWh, status ended, 10.10 kWh short of what he said he needed; ops event: stated 18:03, left 11:05, 10.1 kWh short"
+    }
+   ],
+   "checks": [
+    {
+     "name": "first-hour floor held: >= 3.5 kWh after ~60 min",
+     "ok": true,
+     "detail": "4.90 kWh"
+    },
+    {
+     "name": "receipt is honest: status ended, shortfall visible",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "plan re-solved without him",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "unplug event on the ops feed names him and the shortfall",
+     "ok": true,
+     "detail": ""
+    }
+   ],
+   "frame_mark": 348,
+   "assistant": {
+    "question": "what happens when a driver leaves before the time they gave?",
+    "answer": "A driver who leaves before the time they gave still leaves with a usable charge: the first-hour floor puts min(need, 3.5 kWh) in the car within 60 minutes of plugging in, and the progress floor keeps every car at or above 50 % of pro-rata at every 30-minute checkpoint since arrival (90 % for a prioritised car). The receipt states plainly how many kWh short of the stated need the car left, the plan re-solves without it at once, and the ops feed logs an 'unplug' event with the stated and actual times.",
+    "sources": [
+     "The scheduler",
+     "Driver-side guarantees",
+     "Hard questions"
+    ],
+    "suggested_actions": [
+     {
+      "label": "Sessions",
+      "path": "/ops/sessions"
+     },
+     {
+      "label": "Alerts",
+      "path": "/ops/alerts"
+     }
+    ],
+    "fallback": true,
+    "degraded": false,
+    "usage": null
+   }
+  },
+  {
+   "n": 9,
+   "title": "The grid API goes dark",
+   "story": "The carbon-signal provider has an outage, then the cached forecast is knocked out too. Promise: planning continues on every rung (cached -> tariff), no car loses its plan or deadline, the banner says why, and it all comes back when the signal does.",
+   "sim_start": "2026-04-14T11:07",
+   "steps": [
+    {
+     "sim": "11:07",
+     "who": "system",
+     "text": "live signal lost",
+     "request": {
+      "method": "POST",
+      "path": "/demo/signal_outage",
+      "body": {
+       "rungs": [
+        "live"
+       ]
+      }
+     },
+     "response": {
+      "status": 200,
+      "changed": "fail-safe mode live -> cached",
+      "detail": {
+       "mode_before": "live",
+       "mode_after": "cached",
+       "ladder": {
+        "live": false,
+        "cached": true,
+        "tariff": true,
+        "deadline": true
+       },
+       "cache_expires_at": "2026-04-14T17:07:00"
+      }
+     }
+    },
+    {
+     "sim": "11:07",
+     "who": "system",
+     "text": "cached forecast lost too",
+     "request": {
+      "method": "POST",
+      "path": "/demo/signal_outage",
+      "body": {
+       "rungs": [
+        "cached"
+       ]
+      }
+     },
+     "response": {
+      "status": 200,
+      "changed": "fail-safe mode cached -> tariff",
+      "detail": {
+       "mode_before": "cached",
+       "mode_after": "tariff",
+       "ladder": {
+        "live": false,
+        "cached": false,
+        "tariff": true,
+        "deadline": true
+       },
+       "cache_expires_at": "2026-04-14T17:07:00"
+      }
+     }
+    },
+    {
+     "sim": "11:13",
+     "who": "system",
+     "text": "mode live -> cached -> tariff; plan still covers 32 cars (was 32); mode events on the ops feed: 2"
+    },
+    {
+     "sim": "11:13",
+     "who": "system",
+     "text": "signal restored",
+     "request": {
+      "method": "POST",
+      "path": "/demo/signal_outage",
+      "body": {
+       "restore": true
+      }
+     },
+     "response": {
+      "status": 200,
+      "changed": "fail-safe mode tariff -> live",
+      "detail": {
+       "mode_before": "tariff",
+       "mode_after": "live",
+       "ladder": {
+        "live": true,
+        "cached": true,
+        "tariff": true,
+        "deadline": true
+       },
+       "cache_expires_at": null
+      }
+     }
+    }
+   ],
+   "checks": [
+    {
+     "name": "ladder stepped down in order",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "no car lost its plan",
+     "ok": true,
+     "detail": "32 vs 32"
+    },
+    {
+     "name": "plan frames still flowing with the degraded mode",
+     "ok": true,
+     "detail": "tariff"
+    },
+    {
+     "name": "back to live when the signal returns",
+     "ok": true,
+     "detail": "live"
+    }
+   ],
+   "frame_mark": 444,
+   "assistant": {
+    "question": "what happens if the grid API dies?",
+    "answer": "We are on the 'tariff' rung. If the grid API dies the ladder steps down: tariff (tariff + deadlines, no carbon) \u2192 deadline (earliest-deadline-first only) \u2192 full (no solve: every bay holds its static safe share). Every rung that solves still honours deadlines and the feed; the last rung is the 1.833 kW static share that lives on each charger itself, so even with the backend gone the sum over 60 bays stays under the 150.0 kW feed. Nobody is stranded; the plan gets less clean, not less safe.",
+    "sources": [
+     "The fail-safe ladder",
+     "OCPP"
+    ],
+    "suggested_actions": [
+     {
+      "label": "Watch the mode",
+      "path": "/ops/overview"
+     },
+     {
+      "label": "Alerts",
+      "path": "/ops/alerts"
+     }
+    ],
+    "fallback": true,
+    "degraded": false,
+    "usage": null
+   }
+  },
+  {
+   "n": 10,
+   "title": "The lunchtime rush",
+   "story": "Two waves of twenty cars arrive within minutes, all wanting 8\u201310 kWh inside two hours \u2014 more cars than bays, more demand than the feed can give. Promise: nobody is refused, the shortfall is shared instead of starving one car, the site never crosses its feed, cars that are done are asked to move, and the slackest cars get a move-by time.",
+   "sim_start": "2026-04-14T11:13",
+   "steps": [
+    {
+     "sim": "11:13",
+     "who": "ops",
+     "text": "first wave: 20 arrivals with 2 h deadlines",
+     "request": {
+      "method": "POST",
+      "path": "/demo/oversubscribe"
+     },
+     "response": {
+      "status": 200,
+      "changed": "20 cars plugged in with 2 h deadlines; plan re-solved (elastic shortfall)",
+      "detail": {
+       "added": 20,
+       "session_ids": [
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019,
+        1020,
+        1021,
+        1022,
+        1023,
+        1024,
+        1025,
+        1026,
+        1027,
+        1028
+       ],
+       "connectors_active": 52,
+       "waiting": 0,
+       "demand_kw_if_all_full_power": 364.0,
+       "feed_kw": 150,
+       "kwh_due_in_2h": 203.2
+      }
+     }
+    },
+    {
+     "sim": "11:14",
+     "who": "ops",
+     "text": "second wave: 20 more",
+     "request": {
+      "method": "POST",
+      "path": "/demo/oversubscribe"
+     },
+     "response": {
+      "status": 200,
+      "changed": "20 cars plugged in with 2 h deadlines; plan re-solved (elastic shortfall)",
+      "detail": {
+       "added": 20,
+       "session_ids": [
+        1029,
+        1030,
+        1031,
+        1032,
+        1033,
+        1034,
+        1035,
+        1036,
+        1037,
+        1038,
+        1039,
+        1040,
+        1041,
+        1042,
+        1043,
+        1044,
+        1045,
+        1046,
+        1047,
+        1048
+       ],
+       "connectors_active": 55,
+       "waiting": 17,
+       "demand_kw_if_all_full_power": 385.0,
+       "feed_kw": 150,
+       "kwh_due_in_2h": 230.5
+      }
+     }
+    },
+    {
+     "sim": "11:14",
+     "who": "system",
+     "text": "55 of 60 bays active, 17 cars waiting for a bay; if every plugged car drew full power that would be 385.0 kW on a 150 kW feed; 230.5 kWh due inside 2 h"
+    },
+    {
+     "sim": "11:44",
+     "who": "system",
+     "text": "30 min later: peak EV draw 110.0 kW vs headroom 110.0 kW; 17 move-by times issued, 0 cars finished, 5 done cars moved on for a waiting car, 13 still waiting"
+    }
+   ],
+   "checks": [
+    {
+     "name": "metered EV load never exceeded feed minus building",
+     "ok": true,
+     "detail": "worst 110.0 vs 110.0 kW"
+    },
+    {
+     "name": "nobody refused: every arrival is charging or queued",
+     "ok": true,
+     "detail": ""
+    },
+    {
+     "name": "the site really was full: a queue formed",
+     "ok": true,
+     "detail": "17 waiting"
+    },
+    {
+     "name": "move-by times were issued to the slackest cars",
+     "ok": true,
+     "detail": "17 move_by events"
+    },
+    {
+     "name": "the day's reported peak (EV + building) stays within the feed",
+     "ok": true,
+     "detail": "149.9 vs 150.0 kW"
+    }
+   ],
+   "frame_mark": 457,
+   "assistant": {
+    "question": "13 cars are waiting \u2014 who moves first?",
+    "answer": "13 cars waiting for a bay. Done cars idle 10 min or more are asked to move first (0 done now); then, one per waiting car, the plugged car with the most slack gets a move-by time = now + time to finish at full power (move-by set: c06 by 11:28, c13 by 11:30, c17 by 12:06, c24 by 12:05, c27 by 12:04). Never a car under 1 h of slack, never an urgent one.",
+    "sources": [
+     "The scheduler"
+    ],
+    "suggested_actions": [
+     {
+      "label": "Live charging",
+      "path": "/ops/sites"
+     }
+    ],
+    "fallback": true,
+    "degraded": false,
+    "usage": null
+   }
+  }
+ ]
+}

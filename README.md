@@ -126,6 +126,8 @@ Four buttons on the ops dashboard, each one a `POST /demo/*`:
 
 Script for a 4-minute run: [`.docs/pitch/demo-script.md`](.docs/pitch/demo-script.md).
 
+**Ten real-world scenarios, recorded.** `SIM_SPEED=120 python -m uvicorn noonshift.api:app --port 8000`, then `python scripts/scenarios.py` plays a normal commuter, "leaving now", "leaving soon", "prioritise", a skipped form, a plug-in hybrid, a fleet van, an early leaver, a grid-API outage and a two-wave lunchtime rush against the live backend, checks the promise each one makes (36 checks) and writes the transcript to [`docs/scenarios/run.md`](docs/scenarios/run.md) — every line a real request or a frame from `/ws`.
+
 **Ask the site a question.** The ops dashboard has an *Ask* button: *"why is bay c07 only getting 1.4 kW?"*, *"what happens if the grid API dies?"*, *"how much CO₂ did we save today, in km?"*. The answer comes from a snapshot of the live state plus a hand-written knowledge file (`noonshift/assist_knowledge.md`), via `claude-opus-5` with a cached system prefix when `ANTHROPIC_API_KEY` is set, and from deterministic templates filled with the same snapshot when it is not — so the demo never depends on a key or the internet. It explains and suggests (each answer ends with up to two *label → page* buttons); it never presses anything.
 
 ## API
@@ -137,6 +139,7 @@ GET  /price                       what a ready-by would cost before plugging in 
 POST /sessions                    {connector_id, departure_at, kwh_needed?, vehicle?, soc_now?, target_soc?}
 POST /sessions/{id}/urgency       {level: now | soon | priority, leave_at?} — three bands, one price (R)
 POST /sessions/{id}/boost         alias of urgency level "now"
+POST /sessions/{id}/unplug        the driver pulls the plug: honest receipt, plan re-solved without the car
 GET  /sessions/{id}/live          live kW, grid-cleanliness percentile, $ and kg saved so far
 GET  /sites/{id}/plan             per-connector 5-min kW profile
 GET  /sites/{id}/status           site kW vs feed / block / contracted peak, ladder mode, safe share, waiting, package, R

@@ -48,8 +48,9 @@ BAY_RE = re.compile(r"\bc\d{2}\b", re.I)
 
 
 # ---- snapshot ----
-def snapshot():
-    """A plain dict from api.S, no I/O. Reuses the REST builders so every number matches the dashboard."""
+def snapshot(pin=()):
+    """A plain dict from api.S, no I/O. Reuses the REST builders so every number matches the dashboard.
+    `pin`: connector ids the question names; they always make the row cut."""
     from . import api  # lazy: api imports this module
     S, sim = api.S, api.S["sim"]
     now = sim.now
@@ -74,8 +75,8 @@ def snapshot():
               "done": sum(r["status"] == "done" for r in rows), "at_risk": sum(r["risk"] == "high" for r in rows),
               "urgent": sum(bool(r["urgency"] or r["boost"]) for r in rows),
               "free_bays": status["n_connectors"] - len(rows), "waiting": status["waiting"]}
-    rows.sort(key=lambda r: (r["risk"] != "high", not (r["urgency"] or r["boost"]), r["status"] != "charging",
-                             r["status"] != "done", r["slack_h"]))
+    rows.sort(key=lambda r: (r["connector"] not in pin, r["risk"] != "high", not (r["urgency"] or r["boost"]),
+                             r["status"] != "charging", r["status"] != "done", r["slack_h"]))
     moer, price = S["signal"]["moer"], S["tariff"]["price_per_kwh"]
     per = len(moer) // 24
     hourly = [sum(moer[h * per:(h + 1) * per]) / per for h in range(24)]
@@ -122,7 +123,7 @@ def parse(text):
 
 def ask(question, history=(), page="", snap=None):
     """Returns (payload, http_status). The model when a key works; the deterministic fallback otherwise."""
-    snap = snap or snapshot()
+    snap = snap or snapshot(pin={b.lower() for b in BAY_RE.findall(question)})
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return fallback(question, snap), 200
     import anthropic
@@ -309,6 +310,14 @@ def _trickle(q, snap):
                 ["The scheduler"], [("Chargers", "/ops/chargers")])
 
 
+def _early(q, snap):
+    return _out("A driver who leaves before the time they gave still leaves with a usable charge: the first-hour floor puts min(need, 3.5 kWh) "
+                "in the car within 60 minutes of plugging in, and the progress floor keeps every car at or above 50 % of pro-rata at every 30-minute "
+                "checkpoint since arrival (90 % for a prioritised car). The receipt states plainly how many kWh short of the stated need the car left, "
+                "the plan re-solves without it at once, and the ops feed logs an 'unplug' event with the stated and actual times.",
+                ["The scheduler", "Driver-side guarantees", "Hard questions"], [("Sessions", "/ops/sessions"), ("Alerts", "/ops/alerts")])
+
+
 def _done(q, snap):
     done = [r for r in snap["connectors"] if r["status"] == "done"]
     lst = ", ".join(f"{r['connector']} ({r['idle_min']} min idle)" for r in done[:8]) or "none"
@@ -325,11 +334,12 @@ ROUTES = [
     (("co2", "co₂", "carbon", "kg", "km", "saved", "save", "impact", "renewable"), _co2),
     (("boost", "urgen", "leaving", "priorit", "emergency", "sooner"), _urgency),
     (("1.4", "trickle", "minimum", "paused", "pause"), _trickle),
+    (("early", "before the time", "before they said", "leaves before", "left before", "pulls the plug"), _early),
     (("done", "idle", "finished", "unplug"), _done),
     (("waiting", "queue", "move", "rotate", "more cars", "than bays", "than plugs"), _queue),
     (("price", "pay", "cost", "discount", "rate", "$", "money", "package", "alpha", "beta", "profit", "bill"), _money),
     (("load", "block", "feed", "peak", "limit", "contracted", "overage", "kw", "overcharge", "circuit", "bug", "exceed"), _load),
-    (("signal", "moer", "solar", "clean", "cleanest", "when", "hour", "grid"), _signal),
+    (("signal", "moer", "solar", "clean", "cleanest", "grid", "window"), _signal),
 ]
 
 

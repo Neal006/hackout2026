@@ -47,6 +47,16 @@ def test_snapshot_has_the_keys_and_fits_the_cap(snap):
             "idle_min", "cap_observed"} <= set(row)
 
 
+def test_a_bay_named_in_the_question_always_makes_the_snapshot(snap):
+    """56 cars plugged, 15 rows: the operator asks about a bay that did not make the relevance cut."""
+    shown = {r["connector"] for r in snap["connectors"]}
+    plugged = [c.id for c in S["sim"].active() if c.session]
+    missing = next((cid for cid in plugged if cid not in shown), None)
+    assert missing, "fixture should have more plugged bays than rows"
+    assert missing in {r["connector"] for r in assist.snapshot(pin={missing})["connectors"]}
+    assert f"Bay {missing}" in assist.fallback(f"why is bay {missing} slow?", assist.snapshot(pin={missing}))["answer"]
+
+
 def test_snapshot_is_json_and_sorted_rows_lead_with_the_relevant(snap):
     json.dumps(snap, sort_keys=True)  # what goes into the user turn
     urgent = [r for r in snap["connectors"] if r["urgency"] or r["boost"]]
@@ -77,6 +87,7 @@ def test_every_starter_question_gets_a_grounded_fallback(snap):
     ("the backend dies", "safe share"),
     ("can a bug overcharge the circuit", "hard constraint"),
     ("why would a bay sit at 1.4 kW?", "6 A floor"),
+    ("what happens when a driver leaves before the time they gave?", "first-hour floor"),
 ])
 def test_hard_questions_route_to_the_right_template(snap, q, needle):
     out = assist.fallback(q, snap)
