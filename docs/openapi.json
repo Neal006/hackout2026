@@ -150,6 +150,46 @@
     }
    }
   },
+  "/sessions/{sid}/unplug": {
+   "post": {
+    "summary": "Unplug",
+    "description": "The driver unplugs (early or not): the session ends with an honest receipt and the plan re-solves without it.",
+    "operationId": "unplug_sessions__sid__unplug_post",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Sid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/sessions/{sid}/live": {
    "get": {
     "summary": "Live",

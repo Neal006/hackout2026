@@ -7,9 +7,10 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 from noonshift import scheduler
-from noonshift.api import (S, aligned, demo_boost, demo_early_unplug, demo_oversubscribe, demo_signal_outage, site_impact,
+from noonshift.api import (S, aligned, demo_boost, demo_early_unplug, demo_oversubscribe, demo_signal_outage, meter_history, site_impact, unplug,
                            step, urgency)
 from noonshift.models import OutageIn, UrgencyIn
 from noonshift.sim import DYN_VALID_MIN, Sim, load_sessions, safe_share_kw
@@ -343,3 +344,52 @@ def test_metered_peak_never_reports_above_the_feed(day):
     happened. The instantaneous sum is checked above; the reported KPI must agree with it."""
     assert any(h["start"].minute % 5 for h in day["hist"].values()), "the seed has mid-slot plug-ins, or this test proves nothing"
     assert day["site"].peak_kw <= S["site"]["feed_kw"] + 1e-6, day["site"].peak_kw
+
+
+def test_driver_unplug_ends_the_session_with_an_honest_receipt(mid_morning):
+    s = next(c.session for c in S["sim"].active() if c.session["status"] == "charging")
+    before = s["kwh_delivered"]
+    out = asyncio.run(unplug(s["id"]))
+    assert out.status == "ended" and out.kw_now == 0.0 and out.kwh_delivered == pytest.approx(before, abs=1e-3)
+    assert s["connector_id"] not in S["plan"] or not S["sim"].connectors[s["connector_id"]].session
+    with pytest.raises(HTTPException):
+        asyncio.run(unplug(s["id"]))  # already ended
+
+
+def test_a_burst_of_plug_ins_never_draws_above_headroom_before_the_plan_catches_up(mid_morning):
+    """The live server: POST /sessions and /demo/oversubscribe plug cars in, then await (event broadcast, a threaded
+    solve) before the new plan lands; the control loop can tick in that gap. Newcomers used to hold the 1.833 kW
+    static share each on top of a plan that already filled the feed (20 of them = +37 kW for a minute, seen in
+    scripts/scenarios.py). Now a newcomer's provisional limit is its share out of headroom nobody holds yet."""
+    sim = S["sim"]
+    for c in [c for c in sim.active() if c.session["status"] == "charging"][:16]:  # 16 x 7 kW: a plan that fills the 110 kW headroom
+        asyncio.run(urgency(c.session["id"], UrgencyIn(level="now")))
+    held = sum(c.limit_kw for c in sim.active())
+    ids = list(range(9000, 9020))
+    for i in ids:  # the second wave, as the handler does it, with no resolve yet
+        sim.arrive({"id": i, "connector_id": None, "arrival": sim.now, "departure": sim.now + timedelta(hours=2),
+                    "user_stated_departure": sim.now + timedelta(hours=2), "kwh_needed": 9.0, "kwh_delivered": 0.0,
+                    "boost": False, "status": "pending", "ended_at": None})
+    new = [c for c in sim.active() if c.session["id"] in ids]
+    assert len(new) >= 5, "the wave should have found some free bays"
+    assert held + len(new) * new[0].safe_kw > headroom_now(), "precondition: the old behaviour would have overshot here"
+    assert sum(c.limit_kw for c in sim.active()) <= headroom_now() + 1e-6
+    sim.tick(1)  # the control loop's tick in the gap
+    assert sum(c.kw for c in sim.connectors.values()) <= headroom_now() + 1e-6
+
+
+def test_meter_history_anchors_start_to_the_first_minute_it_records(mid_morning):
+    """Live server: resolve() captures `now`, then awaits a threaded solve; a tick can run in between, so the hist
+    entry's `start` can be a minute earlier than the first draw it records. Every sample then sits one minute early
+    and a 0 -> 7 kW ramp at a slot boundary leaks into the previous slot's 5-min average (the scenario recording
+    showed a 151.8 kW "peak" on a 150 kW feed while no minute ever exceeded headroom)."""
+    sim = S["sim"]
+    t0 = sim.now
+    c = next(c for c in sim.connectors.values() if not c.session)
+    sim.arrive({"id": 9100, "connector_id": c.id, "arrival": t0, "departure": t0 + timedelta(hours=4), "user_stated_departure": t0 + timedelta(hours=4),
+                "kwh_needed": 9.0, "kwh_delivered": 0.0, "boost": False, "status": "pending", "ended_at": None})
+    sim.tick(1)                                                        # the tick that ran while resolve() was awaiting: draw unrecorded
+    S["hist"][9100] = {"start": t0, "baseline": [0.0] * 288, "kw_min": []}  # resolve() lands with its stale `now`
+    sim.tick(1)                                                        # first recorded draw is [t0+1, t0+2)
+    meter_history()
+    assert S["hist"][9100]["kw_min"] and S["hist"][9100]["start"] == t0 + timedelta(minutes=1)

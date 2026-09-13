@@ -91,6 +91,7 @@ class Sim:
         self.day_end = day + timedelta(days=1)
         self.pending = sorted(sessions, key=lambda s: s["arrival"])
         self.waiting = []  # arrived, no free bay (solutions.md §3); plugged in as bays free up, first come first served
+        self.site = site
         self.connectors = {cid: connector_cls(cid, site["p_max_kw"], safe_share_kw(site)) for cid in site["connectors"]}
         self.sessions = {s["id"]: s for s in sessions}
 
@@ -106,6 +107,13 @@ class Sim:
         c = self.free_connector(session.get("connector_id"))
         if c:
             c.plug_in(session)
+            # A newcomer takes its static share only out of headroom nobody holds yet: the plan may already fill the
+            # feed, and a re-solve (a thread, tens of ms) can be a tick away. Falls back to the full share after
+            # DYN_VALID_MIN if no plan ever lands, so the no-backend guarantee is unchanged.
+            room = self.site["feed_kw"] - self.site["building_load_kw"][(self.now.hour * 60 + self.now.minute) // 5] \
+                - sum(x.limit_kw for x in self.connectors.values() if x.session and x is not c)
+            if room < c.limit_kw:
+                c.limit_kw, c.dyn_left = max(0.0, room), DYN_VALID_MIN
         elif session not in self.waiting:
             self.waiting.append(session)
         return c

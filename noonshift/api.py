@@ -193,6 +193,8 @@ def meter_history():
     for sid, h in S.setdefault("hist", {}).items():
         s = sim.sessions[sid]
         if s["status"] == "charging":
+            if not h["kw_min"]:  # resolve() may have created the entry a tick before or after this car's first draw
+                h["start"] = sim.now - timedelta(minutes=1)  # (it awaits a threaded solve); anchor to the minute recorded
             h["kw_min"].append(sim.connectors[s["connector_id"]].kw)
         elif not h.get("final"):
             S["impact"][sid], h["final"] = session_impact(h), True
@@ -444,6 +446,16 @@ async def boost(sid: int):
     return await urgency(sid, UrgencyIn(level="now"))
 
 
+@app.post("/sessions/{sid}/unplug", response_model=LiveOut)
+async def unplug(sid: int):
+    """The driver unplugs (early or not): the session ends with an honest receipt and the plan re-solves without it."""
+    s = get_session(sid)
+    if s["status"] != "charging" and s["status"] != "done":
+        raise HTTPException(409, f"session is {s['status']}")
+    await unplug_session(s, "unplug")
+    return live(sid)
+
+
 @app.get("/sessions/{sid}/live", response_model=LiveOut)
 def live(sid: int):
     s = get_session(sid)
@@ -645,7 +657,13 @@ async def demo_early_unplug():
     cands = sorted(charging_sessions(), key=lambda s: (s["kwh_delivered"] / s["kwh_needed"], -s["user_stated_departure"].timestamp()))
     if not cands:
         raise HTTPException(409, "nobody is charging")
-    s = cands[0]
+    detail = await unplug_session(cands[0], "demo:early_unplug")
+    return DemoOut(changed="session unplugged early; plan re-solved without it", detail=detail)
+
+
+async def unplug_session(s, reason):
+    """The driver pulls the plug (StopTransaction on a real charger): end the session, tell ops, re-solve without it."""
+    sim = S["sim"]
     c = sim.connectors[s["connector_id"]]
     s["departure"] = sim.now
     c.unplug(sim.now)
@@ -654,8 +672,8 @@ async def demo_early_unplug():
               "shortfall_kwh": round(s["kwh_needed"] - s["kwh_delivered"], 2)}
     await event("unplug", detail)
     await db.save_session(s)
-    await resolve("demo:early_unplug")
-    return DemoOut(changed="session unplugged early; plan re-solved without it", detail=detail)
+    await resolve(reason)
+    return detail
 
 
 @app.post("/demo/boost", response_model=DemoOut, dependencies=OPS)
