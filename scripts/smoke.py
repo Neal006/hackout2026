@@ -123,7 +123,18 @@ async def main():
         print(f"[ops]    ladder dropped to {st['mode']} and restored to live")
 
         imp = http("GET", "/sites/site-1/impact")
-        print(f"[ops]    /impact sessions={imp['sessions']} kwh={imp['kwh']} saved=${imp['saved_usd']} {imp['saved_kgco2']} kg  peak {imp['peak_kw']} kW vs baseline {imp['baseline_peak_kw']} kW")
+        assert 0 <= imp["renewable_share"] <= 1 and "health_usd" in imp
+        print(f"[ops]    /impact sessions={imp['sessions']} kwh={imp['kwh']} saved=${imp['saved_usd']} {imp['saved_kgco2']} kg  peak {imp['peak_kw']} kW vs baseline {imp['baseline_peak_kw']} kW  renewable-hour share {100 * imp['renewable_share']:.0f}%")
+
+        # 7. the facilities manager's fields and the audit ledger (WP5)
+        st = http("GET", "/sites/site-1/status")
+        assert st["contracted_peak_kw"] > 0 and st["package"] in ("capacity", "clean-hours", "pilot") and st["n_connectors"] == 60 and "ladder" in st
+        with urllib.request.urlopen(API + "/sites/site-1/impact.csv") as r:
+            csv_text, ctype = r.read().decode(), r.headers.get("Content-Type", "")
+        lines = csv_text.strip().splitlines()
+        assert ctype.startswith("text/csv") and lines[0] == "day,hour,kwh,gco2_per_kwh,kgco2,signal_kind,signal_source" and len(lines) == 25, (ctype, lines[:2])
+        assert sum(float(l.split(",")[2]) for l in lines[1:]) > 0, "the ledger carries today's metered kWh"
+        print(f"[ops]    /status package={st['package']} contracted peak {st['contracted_peak_kw']} kW R=${st['employee_rate_usd_per_kwh']}/kWh signal={st['signal_kind']}; /impact.csv {len(lines) - 1} hourly rows")
         if imp["baseline_peak_kw"] < imp["peak_kw"]:  # possible early in the day (sprints); not a failure, just say so
             print("[ops]    note: managed peak above charge-now peak right now")
         task.cancel()
