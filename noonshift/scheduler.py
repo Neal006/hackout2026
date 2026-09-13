@@ -2,6 +2,8 @@
 
 Conventions the caller (api.py) relies on:
 - Every list "per slot" is aligned: index 0 is the 5-min slot containing `now`, HORIZON slots follow, wrapping the day.
+  Only the remainder of slot 0 is ahead of `now`; the LP counts it that way (`dur[0]`), or a mid-slot re-solve after
+  every plug-in event books energy that can no longer be delivered.
 - Fail-safe rungs shape the inputs, not the call: tariff-only => signal == {"moer": [], "kind": None};
   deadline-only => additionally tariff["price_per_kwh"] == []. Full-power rung never calls solve().
 - The charge-immediately baseline is solve() with every departure = now (all cars ASAP, see below).
@@ -10,21 +12,27 @@ The LP (proposal 4.4). p[i,t] = kW for car i in slot t, s[i] = shortfall kWh, ov
   minimise   sum p * SLOT_H * (price[t] + W_CARBON * moer[t] / 1000)  +  M_SHORT * s[i]  +  overage_usd_per_kw * over
   1. energy    sum_{t < deadline} p * SLOT_H + s[i] >= e_rem[i]                (elastic: the LP is never infeasible)
   2. floor     delivered + planned energy by each 30-min checkpoint since arrival >= ALPHA * pro-rata * (need - s[i])
-               (fairness + early-unplug safety; anchored to arrival so a rolling re-solve cannot defer it)
+               (fairness + early-unplug safety; anchored to arrival so a rolling re-solve cannot defer it);
+               per-car floor_alpha (urgency "priority") replaces ALPHA
+  2b. first hour  energy 60 min after plug-in >= min(need, FIRST_HOUR_KWH): never worse than a dumb charger in the
+               hour an emergency is most likely (business.md §4); elastic through the same floor slack, so it beats
+               the signal and the tariff block but never the feed (rule 5 is hard: the building peak is the customer's)
   3. sprint    the last 30 min before the deadline carry a BUFFER_COST surcharge, so a feasible car finishes early and
                the buffer is spent only by cars that would otherwise fall short (and by re-solves after a bad forecast)
   4. charger   0 <= p <= p_max_kw
   5. site      sum_i p[i,t] <= feed_kw - building_load_kw[t]
   block        sum_i p[i,t] - over <= block_kw
   cap          sum_{t < deadline} p * SLOT_H <= e_rem[i]                       (never plan more than the car can take)
-  fairness     s[i] / e_rem[i] <= z, z priced at M_SHORT * mean(e_rem): a linear shortfall penalty alone starves
-               whole cars when the lot is oversubscribed; minimising the worst fraction spreads the shortfall instead
+  fairness     priority[i] * s[i] / e_rem[i] <= z, z priced at M_SHORT * mean(e_rem): a linear shortfall penalty alone
+               starves whole cars when the lot is oversubscribed; minimising the worst fraction spreads the shortfall
+               instead. A priority car (urgency) also pays priority * M_SHORT per kWh short, so it gives way last.
 ASAP cars (deadline already passed, or Boost): slot cost is only the earliest-first tie-break, so they charge now.
 When every car is ASAP (the baseline call) the block-overage term is dropped: charge-immediately means exactly that.
 """
 import logging
 import math
 import time
+from datetime import timedelta
 
 import numpy as np
 from scipy.optimize import linprog
@@ -38,6 +46,11 @@ MIN_KW = 1.4        # 6 A x 240 V, the IEC 61851 floor: allocations in (0, MIN_K
 W_CARBON = 0.05     # $/kg CO2 (= $50/t) trading carbon against tariff; prove.py sweeps this
 ALPHA = 0.5         # progress floor: every car holds >= half its pro-rata energy at every checkpoint
 FLOOR_EVERY = 6     # checkpoint every 30 min. Hourly looked smoother on the Gantt but let a car sit at 0 kWh for 59 min
+FIRST_HOUR_KWH = 3.5  # business.md §4: what a dumb 7 kW charger gives in 30 min; every car has it 60 min after plug-in
+FIRST_HOUR = timedelta(hours=1)
+FIRST_HOUR_SLOTS = 12
+FLOOR_STEP = timedelta(minutes=5 * FLOOR_EVERY)
+SLOT = timedelta(minutes=5)
 SPRINT_SLOTS = 6    # last 30 min before the deadline are a buffer: used only when the car would otherwise fall short
 BUFFER_COST = 1.0   # $/kWh surcharge on buffer slots, >> any tariff spread and << M_SHORT
 M_SHORT = 10.0      # $/kWh shortfall penalty, >> any per-kWh cost, so shortfall is the last resort
@@ -82,7 +95,10 @@ def solve_lp(cars, site, signal, tariff, now):
     price = _per_slot(tariff.get("price_per_kwh"))
     avail = np.maximum(site["feed_kw"] - _per_slot(site.get("building_load_kw")), 0.0)
     overage = tariff.get("block_price", 0.0) * tariff.get("overage_multiplier", 2.0) / DAYS_PER_MONTH
-    slot_cost = SLOT_H * (price + W_CARBON * moer / 1000) + EPS * np.arange(H)
+    t0 = now.replace(minute=now.minute - now.minute % 5, second=0, microsecond=0)  # start of slot 0
+    dur = np.full(H, SLOT_H)                                              # hours per slot; slot 0 = what is left of it
+    dur[0] = max(1 / 3600, (t0 + SLOT - now).total_seconds() / 3600)
+    slot_cost = dur * (price + W_CARBON * moer / 1000) + EPS * np.arange(H)
 
     S = lambda i: n * H + i          # shortfall column of car i
     OVER = n * H + n
@@ -108,6 +124,8 @@ def solve_lp(cars, site, signal, tariff, now):
         soc = done / need if need > 0 else 1.0
         if soc >= TAPER_SOC:  # already tapering: the car cannot draw p_max any more, and it only gets slower
             p_max *= max(TAPER_MIN, (1 - soc) / (1 - TAPER_SOC))
+        fa = float(car.get("floor_alpha", ALPHA))        # urgency "priority": 0.9
+        prio = max(1.0, float(car.get("priority", 1.0)))  # urgency "priority": 2.0
         d = _slots_until(car["departure"], now)
         asap = d == 0 or bool(car.get("boost"))
         if asap:
@@ -120,33 +138,50 @@ def solve_lp(cars, site, signal, tariff, now):
             continue
         end = d if asap or d <= SPRINT_SLOTS else d - SPRINT_SLOTS     # rule 3: 30-min buffer
         for t in range(d):
-            c[base + t] = ASAP_EPS * t if asap else slot_cost[t] + (BUFFER_COST * SLOT_H if t >= end else 0.0)
+            c[base + t] = ASAP_EPS * t if asap else slot_cost[t] + (BUFFER_COST * dur[t] if t >= end else 0.0)
             hi[base + t] = p_max
-        c[S(i)], hi[S(i)] = M_SHORT, e_rem
+        c[S(i)], hi[S(i)] = M_SHORT * prio, e_rem
         e_rems.append(e_rem)
-        row([(base + t, -SLOT_H) for t in range(d)] + [(S(i), -1.0)], -e_rem)          # rule 1 (elastic)
-        row([(base + t, SLOT_H) for t in range(d)], e_rem)                              # cap
+        row([(base + t, -dur[t]) for t in range(d)] + [(S(i), -1.0)], -e_rem)          # rule 1 (elastic)
+        row([(base + t, dur[t]) for t in range(d)], e_rem)                              # cap
         e_fast = max(0.0, TAPER_SOC * need - done)                                      # energy below the taper knee
         if not asap and e_rem > e_fast > 0:
             # the slow tail (above the knee) draws ~TAPER_AVG * p_max: the fast part must be done early enough to
             # leave it time, or the tail spills past the deadline (winter replay: 22 cars 0.2 kWh short)
             tail = math.ceil((e_rem - e_fast) / (TAPER_AVG * p_max) / SLOT_H)
             if 0 < tail < end:  # elastic through the floor slack, never through the total shortfall
-                row([(base + t, -SLOT_H) for t in range(end - tail)] + [(F(i), -1.0)], -e_fast)
-        row([(S(i), 1.0), (Z, -e_rem)], 0.0)                                            # s[i] / e_rem[i] <= z
+                row([(base + t, -dur[t]) for t in range(end - tail)] + [(F(i), -1.0)], -e_fast)
+        row([(S(i), prio), (Z, -e_rem)], 0.0)                                           # prio * s[i] / e_rem[i] <= z
         if not asap:
-            # rule 2 (elastic), anchored to arrival: checkpoints every FLOOR_EVERY slots since plug-in, target
-            # ALPHA * pro-rata of the whole need, counting energy already delivered. Anchoring to `now` instead
+            # rule 2 (elastic), anchored to arrival: a checkpoint every FLOOR_EVERY slots since plug-in, target
+            # fa * pro-rata of the whole need, counting energy already delivered. Anchoring to `now` instead
             # lets a 5-min rolling re-solve defer the floor forever (the first checkpoint is always 30 min away).
-            elapsed = max(0, int((now - car.get("arrival", now)).total_seconds() // 300))
-            L = elapsed + end
-            for j in range(FLOOR_EVERY, L + 1, FLOOR_EVERY):
-                t = j - elapsed - 1
-                if t < 0 or t >= end:
+            # Checkpoints are times, not slot counts: the slot containing a mark counts pro rata, so "60 min after
+            # plug-in" means 60 min whichever minute of a slot the re-solve fires in.
+            arrival = car.get("arrival", now)
+            horizon_end = t0 + end * SLOT                                                   # deadline minus buffer
+            span = (horizon_end - arrival).total_seconds()
+
+            def before(mark):
+                """Energy delivered by `mark`: -hours of each slot that lie in [now, mark), as LP coefficients."""
+                out = []
+                for t in range(min(end, math.ceil((mark - t0).total_seconds() / 300))):
+                    h = (min(mark, t0 + (t + 1) * SLOT) - max(now, t0 + t * SLOT)).total_seconds() / 3600
+                    if h > 0:
+                        out.append((base + t, -h))
+                return out
+
+            m = 1
+            while span > 0 and arrival + m * FLOOR_STEP <= horizon_end:
+                mark = arrival + m * FLOOR_STEP
+                m += 1
+                if mark <= now:
                     continue
-                frac = j / L
-                row([(base + tt, -SLOT_H) for tt in range(t + 1)] + [(S(i), -ALPHA * frac), (F(i), -1.0)],
-                    done - ALPHA * frac * need)
+                frac = (mark - arrival).total_seconds() / span
+                row(before(mark) + [(S(i), -fa * frac), (F(i), -1.0)], done - fa * frac * need)
+            mark = arrival + FIRST_HOUR                                                      # rule 2b
+            if now < mark <= horizon_end:
+                row(before(mark) + [(F(i), -1.0)], done - min(need, FIRST_HOUR_KWH))
             c[F(i)], hi[F(i)] = M_FLOOR, need
     pure_asap = len(info["asap"]) == n
     reserved = sum(min(MIN_KW, float(cars[i]["p_max_kw"])) for i in finish)  # finishing cars draw MIN_KW in slot 0
@@ -208,7 +243,7 @@ def _enforce_min_kw(plan, cars, cap, now):
 
 
 def solve(cars, site, signal, tariff, now) -> dict[str, list[float]]:
-    """cars: [{connector_id, arrival, departure, kwh_needed, kwh_delivered, p_max_kw, boost}]
+    """cars: [{connector_id, arrival, departure, kwh_needed, kwh_delivered, p_max_kw, boost, floor_alpha?, priority?}]
     site: {feed_kw, building_load_kw: [per slot], block_kw}
     signal: {moer: [gCO2/kWh per slot], kind: "marginal"|"average"|None}
     tariff: {price_per_kwh: [per slot], block_price, overage_multiplier}
@@ -251,12 +286,18 @@ def impact(plan, baseline, signal, tariff) -> dict[str, float]:
     return {"saved_usd": d["saved_usd"], "saved_kgco2": d["saved_kgco2"]}
 
 
-def price(slack_hours: float) -> dict:
-    """Deadline sets the price. Three tiers by slack (dwell minus charge time). Unknown slack => standard."""
+def tier_of(slack_hours) -> str:
+    """Three labels by slack (dwell minus charge time), for the UI. Unknown slack => standard."""
     if slack_hours is None or slack_hours != slack_hours:
-        return {"tier": "standard", "usd_per_kwh": 0.25}
-    if slack_hours >= 4:
-        return {"tier": "green", "usd_per_kwh": 0.18}
-    if slack_hours >= 1:
-        return {"tier": "standard", "usd_per_kwh": 0.25}
-    return {"tier": "boost", "usd_per_kwh": 0.40}
+        return "standard"
+    return "green" if slack_hours >= 4 else "standard" if slack_hours >= 1 else "boost"
+
+
+def price(slack_hours, *, r=None, saving_usd=0.0, kwh=0.0, alpha=0.5, urgent=False) -> dict:
+    """business.md §7b: the driver pays R minus a share of what the schedule measurably saved, never more than R.
+    usd_per_kwh = R - alpha * max(S, 0) / E, clamped to [0, R]. Urgent (any emergency band) or < 1 h slack => exactly R.
+    R = None means free workplace charging (business.md §0b). Old callers `price(slack)` keep working."""
+    r = max(0.0, float(r or 0.0))
+    tier = tier_of(slack_hours)
+    discount = alpha * max(saving_usd, 0.0) / kwh if kwh > 0 and not urgent and tier != "boost" else 0.0
+    return {"tier": tier, "usd_per_kwh": round(min(r, max(0.0, r - discount)), 4)}

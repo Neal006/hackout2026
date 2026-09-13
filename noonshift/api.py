@@ -16,7 +16,7 @@ from pydantic import TypeAdapter
 from . import db, scheduler, seed
 from .models import (WS_FRAMES, ConnectorMeter, ConnectorPlan, DemoOut, DrEvent, EventMsg, FlexHour, ImpactOut,
                      LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, PricePreview, PriceTier, SessionIn, SessionOut,
-                     SignalHour, StatusOut)
+                     SignalHour, StatusOut, UrgencyIn)
 from .sim import SLOT, SPEED, Connector, Sim, load_sessions
 
 S = {}  # site, signal, tariff, sim, plan, plan_at, baseline, impact, mode, ladder, live_lost_at, last_solve_at, dr, clients, next_id
@@ -51,10 +51,30 @@ def pick_mode(now):
     return "full"
 
 
+URGENCY_MIN = timedelta(minutes=15)  # "soon" closer than this is "now": nothing can be scheduled in under 15 min
+PRIORITY = {"floor_alpha": 0.9, "priority": 2.0}  # business.md §4b low band: floor 90 % pro-rata, gives way last
+
+
 def car(c):
     s = c.session
     return {"connector_id": c.id, "arrival": s["arrival"], "departure": s["user_stated_departure"],
-            "kwh_needed": s["kwh_needed"], "kwh_delivered": s["kwh_delivered"], "p_max_kw": c.p_max_kw, "boost": s["boost"]}
+            "kwh_needed": s["kwh_needed"], "kwh_delivered": s["kwh_delivered"], "p_max_kw": c.p_max_kw, "boost": s["boost"],
+            **(PRIORITY if s.get("urgency") == "priority" else {})}
+
+
+def site_rate():
+    """R: what the driver pays per kWh today. 0 = free workplace charging (business.md §0b)."""
+    return float(S["site"].get("employee_rate_usd_per_kwh", 0.0))
+
+
+def session_price(s, slack):
+    """business.md §7b: R minus the driver's share of this session's measured saving. The receipt's saving covers the
+    planned series (metered + plan ahead), so the matching energy is the need while charging and the delivered kWh
+    once ended (an early leaver shifted less). Any urgency band pays exactly R."""
+    imp = S["impact"].get(s["id"], {"saved_usd": 0.0})
+    kwh = s["kwh_delivered"] if s["status"] == "ended" else s["kwh_needed"]
+    return scheduler.price(slack, r=site_rate(), saving_usd=imp["saved_usd"], kwh=kwh,
+                           alpha=S["site"].get("driver_share", 0.5), urgent=bool(s.get("urgent")))
 
 
 def new_sim():
@@ -160,7 +180,8 @@ def meter_msg():
             connector_id=c.id, session_id=s["id"] if s else None,
             status=c.status if s else "idle", kw=round(c.kw, 2),
             kwh_delivered=round(s["kwh_delivered"], 3) if s else 0, kwh_needed=s["kwh_needed"] if s else 0,
-            departure_at=s["user_stated_departure"] if s else None, boost=s["boost"] if s else False))
+            departure_at=s["user_stated_departure"] if s else None, boost=s["boost"] if s else False,
+            urgency=s.get("urgency") if s else None))
     return MeterMsg(sim_time=sim.now, mode=S["mode"], site_kw=round(sum(c.kw for c in sim.connectors.values()), 2),
                     building_load_kw=S["site"]["building_load_kw"][slot_of(sim.now)], feed_kw=S["site"]["feed_kw"],
                     connectors=conns)
@@ -211,7 +232,7 @@ def session_out(s):
     return SessionOut(session_id=s["id"], connector_id=s["connector_id"], status=s["status"],
                       plan=PlanWindow(start=h0 + on[0] * SLOT if on else None, end=h0 + (on[-1] + 1) * SLOT if on else None,
                                       ready_by=s["user_stated_departure"]),
-                      eta=eta, price=scheduler.price(slack), boost=s["boost"])
+                      eta=eta, price=session_price(s, slack), boost=s["boost"], urgency=s.get("urgency"))
 
 
 def get_session(sid):
@@ -285,16 +306,35 @@ async def create_session(body: SessionIn):
     return session_out(s)
 
 
-@app.post("/sessions/{sid}/boost", response_model=SessionOut)
-async def boost(sid: int):
+@app.post("/sessions/{sid}/urgency", response_model=SessionOut)
+async def urgency(sid: int, body: UrgencyIn):
+    """business.md §4b. now: deadline = now, full power (the ASAP path). soon: deadline = leave_at, the LP picks the
+    cleanest slots inside the window (< 15 min away = now). priority: deadline unchanged, floor 90 % pro-rata and the
+    shortfall weight doubled. Every band marks the session urgent, so price() returns exactly R."""
     s = get_session(sid)
     if s["status"] not in ("charging", "done"):
         raise HTTPException(409, f"session is {s['status']}")
-    s["boost"] = True
-    await event("boost", {"session_id": sid, "connector_id": s["connector_id"]})
+    sim = S["sim"]
+    level, leave_at = body.level, body.leave_at
+    if level == "soon" and (leave_at is None or leave_at < sim.now + URGENCY_MIN):
+        level = "now"
+    if level == "now":
+        s["boost"], s["user_stated_departure"] = True, sim.now  # the car leaves when it leaves; charge flat out until then
+    elif level == "soon":
+        s["user_stated_departure"] = s["departure"] = leave_at  # the driver said when they leave: the sim believes them
+    s["urgent"], s["urgency"] = True, level
+    await event("boost" if level == "now" else "urgency",  # "now" keeps the event name both front-ends already handle
+                {"session_id": sid, "connector_id": s["connector_id"], "level": level, "requested": body.level,
+                 "leave_at": s["user_stated_departure"].isoformat()})
     await db.save_session(s)
-    await resolve("boost")
+    await resolve(f"urgency:{level}")
     return session_out(s)
+
+
+@app.post("/sessions/{sid}/boost", response_model=SessionOut)
+async def boost(sid: int):
+    """Alias for urgency "now" (WattWise's "Charge now" button)."""
+    return await urgency(sid, UrgencyIn(level="now"))
 
 
 @app.get("/sessions/{sid}/live", response_model=LiveOut)
@@ -360,11 +400,15 @@ def site_status(site_id: str):
 
 @app.get("/price", response_model=PricePreview)
 def price_preview(departure_at: datetime, kwh_needed: float = 8.0):
-    """Deadline sets the price: preview the tier for a ready-by time before the driver commits."""
-    slack = (departure_at - S["sim"].now).total_seconds() / 3600 - kwh_needed / S["site"]["p_max_kw"]
-    tiers = [PriceTier(tier=t, min_slack_hours=m, usd_per_kwh=scheduler.price(m)["usd_per_kwh"])
-             for t, m in (("green", 4.0), ("standard", 1.0), ("boost", 0.0))]
-    return PricePreview(slack_hours=round(slack, 2), price=scheduler.price(slack), tiers=tiers)
+    """What a ready-by would cost before plugging in. No session yet, so the discount is today's site saving rate so far
+    (sum of measured session savings over delivered kWh) applied to this need: an estimate, settled on the receipt."""
+    sim = S["sim"]
+    slack = (departure_at - sim.now).total_seconds() / 3600 - kwh_needed / S["site"]["p_max_kw"]
+    ended = [s for s in sim.sessions.values() if s["status"] != "pending" and s["kwh_delivered"] > 0]
+    rate = sum(S["impact"].get(s["id"], {"saved_usd": 0.0})["saved_usd"] for s in ended) / sum(s["kwh_delivered"] for s in ended) if ended else 0.0
+    quote = lambda h: scheduler.price(h, r=site_rate(), saving_usd=rate * kwh_needed, kwh=kwh_needed, alpha=S["site"].get("driver_share", 0.5))
+    tiers = [PriceTier(tier=t, min_slack_hours=m, usd_per_kwh=quote(m)["usd_per_kwh"]) for t, m in (("green", 4.0), ("standard", 1.0), ("boost", 0.0))]
+    return PricePreview(slack_hours=round(slack, 2), price=quote(slack), tiers=tiers)
 
 
 @app.get("/grid/signal", response_model=list[SignalHour])
@@ -451,7 +495,8 @@ async def demo_boost():
         raise HTTPException(409, "nobody to boost")
     s = cands[0]
     was = s["user_stated_departure"]
-    s["boost"] = True
+    s["boost"] = s["urgent"] = True
+    s["urgency"] = "now"
     s["user_stated_departure"] = s["departure"] = sim.now + timedelta(hours=1)
     await event("boost", {"session_id": s["id"], "connector_id": s["connector_id"]})
     await db.save_session(s)

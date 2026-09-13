@@ -15,6 +15,14 @@ class SessionIn(BaseModel):
     kwh_needed: float | None = None
 
 
+Urgency = Literal["now", "soon", "priority"]  # business.md §4b: three bands, one price (R)
+
+
+class UrgencyIn(BaseModel):
+    level: Urgency
+    leave_at: datetime | None = None  # "soon" only; < 15 min away is treated as "now"
+
+
 class Price(BaseModel):
     tier: Literal["green", "standard", "boost"]
     usd_per_kwh: float
@@ -34,6 +42,7 @@ class SessionOut(BaseModel):
     eta: datetime | None  # when the plan reaches kwh_needed
     price: Price
     boost: bool
+    urgency: Urgency | None = None  # set by POST /sessions/{id}/urgency (or /boost = "now"); price is then exactly R
 
 
 class LiveOut(BaseModel):
@@ -137,6 +146,7 @@ class ConnectorMeter(BaseModel):
     kwh_needed: float
     departure_at: datetime | None  # what the driver told us
     boost: bool
+    urgency: Urgency | None = None
 
 
 class MeterMsg(BaseModel):
@@ -152,7 +162,7 @@ class MeterMsg(BaseModel):
 class EventMsg(BaseModel):
     type: Literal["event"] = "event"
     sim_time: datetime
-    name: Literal["plug_in", "unplug", "deadline", "boost", "dr", "demo", "mode", "day_reset"]
+    name: Literal["plug_in", "unplug", "deadline", "boost", "urgency", "dr", "demo", "mode", "day_reset"]
     detail: dict
 
 

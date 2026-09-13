@@ -1,5 +1,5 @@
 # AGENTS.md — Project Memory (auto-maintained)
-Last updated: 2026-09-13 | Sessions logged: 5
+Last updated: 2026-09-13 | Sessions logged: 6
 
 ## Identity
 Hackathon entry: "Noonshift" — a CPO-side, deadline-based EV charging scheduler that shifts flexible charging into low-marginal-carbon hours at daytime long-dwell sites (workplace/destination/depot). Four-person team, lanes in `team-plan.md`.
@@ -7,7 +7,7 @@ Hackathon entry: "Noonshift" — a CPO-side, deadline-based EV charging schedule
 ## Stack & Commands
 - Python 3.12/3.13 · FastAPI · scipy 1.14 (HiGHS LP) · mobilityhouse/ocpp · asyncpg/Postgres (optional) · Docker Compose. Two Vite front-ends: `web/` (ops dashboard, React+JSX+Tailwind 3, :5173) and `wattwise/` (driver app, React+TS+Tailwind 4, :5174); `npm install && npm run dev` in each, both proxy `/api` and `/ws` to :8000. `npm run build` in each, then `docker compose up` serves them on :3000 / :3001.
 - `python -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt`
-- `python -m pytest` (52 tests, ~45 s) · `python scripts/prove.py` (slide 1) · `python -m noonshift.test_loop` · `docker compose up -d --build`
+- `python -m pytest` (63 tests, ~60 s) · `python scripts/prove.py` (slide 1) · `python -m noonshift.test_loop` · `docker compose up -d --build`
 - Data: `python -m noonshift.seed gen` (placeholders) · `python scripts/fetch_data.py signal|caiso|sessions --day ...` (real).
 
 ## Current State & Focus
@@ -24,8 +24,8 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 → WebSocket frames (plan/meter/event) → driver PWA + ops dashboard. Ladder: live → cached → tariff-only → deadline-only → full power. Hardware limits stay on the charger.
 
 ## File Map
-- `noonshift/scheduler.py` — `solve(cars, site, signal, tariff, now)`, `solve_lp()` (+info), `impact()`, `impact_detail()`, `price()`; module constants W_CARBON, ALPHA, FLOOR_EVERY, SPRINT_SLOTS, BUFFER_COST, M_SHORT, M_FLOOR, ASAP_EPS, E_MIN, MIN_KW.
-- `noonshift/api.py` — FastAPI app, state dict `S`, `resolve()`, `step()`, `session_impact()`, `meter_history()`, ladder `pick_mode()`, `/demo/*`.
+- `noonshift/scheduler.py` — `solve(cars, site, signal, tariff, now)`, `solve_lp()` (+info), `impact()`, `impact_detail()`, `price(slack, *, r, saving_usd, kwh, alpha, urgent)` (§7b: R − α·S/E, ≤ R), `tier_of()`; per-car optional `floor_alpha`, `priority`; constants W_CARBON, ALPHA, FLOOR_EVERY, FIRST_HOUR_KWH (3.5), SPRINT_SLOTS, BUFFER_COST, M_SHORT, M_FLOOR, ASAP_EPS, E_MIN, MIN_KW. Slot 0 carries only its remaining minutes (`dur[0]`); floor checkpoints are times since arrival, pro rata in the slot containing the mark.
+- `noonshift/api.py` — FastAPI app, state dict `S`, `resolve()`, `step()`, `session_impact()`, `meter_history()`, ladder `pick_mode()`, `/demo/*`; `POST /sessions/{id}/urgency {level: now|soon|priority, leave_at?}` (`/boost` = alias of `now`; `URGENCY_MIN` 15 min; `PRIORITY` = floor 0.9 / weight 2.0); `site_rate()` = `site.json: employee_rate_usd_per_kwh` (0 = free); `session_price()`.
 - `noonshift/sim.py` — `Sim`, `Connector` (taper from 80% SoC), `load_sessions()`.
 - `noonshift/models.py` — pydantic REST bodies + WS frames (contract with front-end). `SignalHour` added for `GET /grid/signal` (hourly MOER g/kWh + $/kWh; frames unchanged).
 - `web/src/context/GlobalStateContext.jsx` — ops app state: opens `/ws`, polls `/sites/site-1/impact|status`, derives the page shape (siteDetail/connectors Gantt on a 06–22 axis, sessions, alerts from events, chargersList); `triggerEvent()` maps demo buttons → `/demo/*`, prioritize → `/sessions/{id}/boost`.
@@ -67,6 +67,8 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - Open limitation: 1 charger per car for the whole dwell; cars > chargers → deadline becomes 'move-by' time (proposal §9.5).
 
 ## Decisions Log
+- 2026-09-13 — Emergency = three bands (now/soon/priority), every band pays exactly R; first-hour floor min(need, 3.5 kWh) costs 4.8 pts of CO2 saving on the real day (69.4 → 64.6 %), kept — it is the trust promise (business.md §4).
+- 2026-09-13 — First-hour floor beats the signal and the tariff block but never the feed (M_FLOOR 1.0 > block overage 0.83 $/kW-day); a 40-car mass arrival bursts the block, staggered real arrivals do not.
 - 2026-09-11 — Wedge = daytime workplace/destination sites, payer = site owner.
 - 2026-09-11 — One plug-in question + one Boost toggle; no pricing lanes.
 - 2026-09-11 — Elastic LP with progress floor; anti-herding = no broadcast; demo grid = California.
@@ -77,6 +79,7 @@ Signals (WattTime MOER; CAISO fuel-mix fallback) + tariff table + sessions (dead
 - 2026-09-12 — Session data = ACN 2019-04-09 re-dated onto the 2026 signal day; kwh_needed = delivered energy, stated departure = the driver's own input (early leavers kept).
 
 ## Changelog
+2026-09-13 | WP1 pricing + emergency + first-hour floor | scheduler.py, api.py, models.py, data/site.json, tests/, scripts/smoke.py, .docs/implementation-plan.md | price() = §7b shared savings (never above R); urgency endpoint; slot-0 remaining-duration + time-anchored checkpoints fixed a lost-energy bug that the 3.5 kWh promise exposed
 2026-09-13 | Open-source docs pass: README rewrite (Mermaid, quick start, results, OCPP 1.6J badge), LICENSE/CONTRIBUTING/CODE_OF_CONDUCT/SECURITY/CHANGELOG, issue+PR templates, .docs/ARCHITECTURE.md (6 validated diagrams), .docs/README.md index; all human docs moved to .docs/; business.md (break points, §4b emergency scale at R, §7b shared-savings formula), metrics.md, solutions.md (real-world fixes → code; drivers under-state stay 29/36; prove.py plans with perfect foresight) | README.md, .docs/, LICENSE, CONTRIBUTING.md, SECURITY.md, CHANGELOG.md, .github/ | All Mermaid blocks validated with mermaid@11 + jsdom; ROADMAP emergency pricing reconciled to "R, no quota".
 2026-09-13 | ROADMAP.md (layman plan: driver inputs, emergency, incentives, Tier 0/1, order of work) + GitHub Actions CI | ROADMAP.md, .github/workflows/ci.yml, wattwise/src/context/WattwiseContext.tsx, web/src/pages/ImpactView.jsx | CI = pytest + prove gate + smoke against live uvicorn + contract-diff + lint/build both apps; lint fixes only (refs not read during render, Card hoisted)
 2026-09-13 | team-plan.md integration pass: price preview, peak-avoided, fail-safe banner, smoke gate, pitch/ | api.py, models.py, web/, wattwise/, scripts/smoke.py, scripts/dev.ps1, pitch/, README | Baseline peak = sum of frozen per-session baselines clipped at the feed (label "est."); cost-savings slide left TODO for lack of a source

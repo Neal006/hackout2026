@@ -81,9 +81,22 @@ async def main():
 
         # 6. the four ops demo buttons. Two more (un-boosted) drivers first, so that after "early unplug" takes
         #    one of them, "boost" still finds a car that isn't already boosted; early in the sim day ours may be alone.
-        for cid in (free[-2], free[-3]):
-            http("POST", "/sessions", {"connector_id": cid, "departure_at": departure, "kwh_needed": 9.0})
+        others = [http("POST", "/sessions", {"connector_id": cid, "departure_at": departure, "kwh_needed": 9.0})["session_id"]
+                  for cid in (free[-2], free[-3])]
         await asyncio.sleep(1.5)
+
+        # 6a. the emergency bands (business.md §4b): "soon" moves the deadline, "priority" keeps it; both pay exactly R
+        soon_at = (sim_now + timedelta(hours=1, minutes=30)).replace(second=0, microsecond=0).isoformat()
+        u1 = http("POST", f"/sessions/{others[0]}/urgency", {"level": "soon", "leave_at": soon_at})
+        u2 = http("POST", f"/sessions/{others[1]}/urgency", {"level": "priority"})
+        assert u1["urgency"] == "soon" and u1["plan"]["ready_by"].startswith(soon_at[:16]) and not u1["boost"]
+        assert u2["urgency"] == "priority" and u2["plan"]["ready_by"].startswith(departure[:16])
+        assert u1["price"]["usd_per_kwh"] == u2["price"]["usd_per_kwh"] == b["price"]["usd_per_kwh"], "every band pays R"
+        await asyncio.sleep(2.5)
+        assert frames_of(frames, "event", name="urgency", level="soon") and frames_of(frames, "event", name="urgency", level="priority")
+        mine = {c["session_id"]: c for c in frames_of(frames, "meter")[-1]["connectors"]}
+        assert mine[others[0]]["urgency"] == "soon" and mine[others[1]]["urgency"] == "priority"
+        print(f"[driver] urgency soon -> ready_by {u1['plan']['ready_by']} ${u1['price']['usd_per_kwh']}/kWh; priority -> ${u2['price']['usd_per_kwh']}/kWh; ops sees both")
         for path, body in (("/demo/early_unplug", None), ("/demo/boost", None), ("/demo/oversubscribe", None),
                            ("/demo/signal_outage", {"rungs": ["live"]})):
             d = http("POST", path, body)

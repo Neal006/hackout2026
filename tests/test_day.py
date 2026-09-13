@@ -9,8 +9,9 @@ from pathlib import Path
 import pytest
 
 from noonshift import scheduler
-from noonshift.api import S, aligned, demo_boost, demo_early_unplug, demo_oversubscribe, demo_signal_outage, site_impact, step
-from noonshift.models import OutageIn
+from noonshift.api import (S, aligned, demo_boost, demo_early_unplug, demo_oversubscribe, demo_signal_outage, site_impact,
+                           step, urgency)
+from noonshift.models import OutageIn, UrgencyIn
 from noonshift.sim import Sim, load_sessions
 
 EARLY = {7, 23}  # seed.py: told us ~17:00, actually leave ~13:00
@@ -86,6 +87,16 @@ def test_early_leavers_hold_the_progress_floor(day):
     for sid in EARLY:
         s = day["sessions"][sid]
         assert s["kwh_delivered"] >= pro_rata_floor(s, s["departure"]) - scheduler.MIN_KW * scheduler.SLOT_H, (sid, s["kwh_delivered"])
+
+
+def test_first_hour_floor_holds_for_every_car_on_the_day(day):
+    """business.md §4 rule 1 and rule 3, as one assertion: 60 min after plug-in every car has min(need, 3.5 kWh), which
+    is what a dumb 7 kW charger gives in 30 min. Beyond the first hour the guarantee is the 50 % pro-rata floor (tested
+    above); a dumb-charger bound over *every* rolling hour would forbid the shifting the product exists to do."""
+    for sid, h in day["hist"].items():
+        s = day["sessions"][sid]
+        first_hour = sum(h["kw_min"][:60]) / 60
+        assert first_hour >= min(s["kwh_needed"], scheduler.FIRST_HOUR_KWH) - 0.1, (sid, first_hour, s["kwh_needed"])
 
 
 def test_every_session_has_a_finalised_receipt(day):
@@ -170,3 +181,47 @@ def test_demo_signal_outage_walks_the_ladder_and_keeps_planning(mid_morning):
     assert out.detail["mode_after"] == "full" and all(c.limit_kw == c.p_max_kw for c in mid_morning.active())
     out = asyncio.run(demo_signal_outage(OutageIn(restore=True)))
     assert out.detail["mode_after"] == "live"
+
+
+# ---- urgency bands (business.md §4b) ----
+def charging_now(sim):
+    return sorted((c.session for c in sim.active() if c.status == "charging" and not c.session["boost"]),
+                  key=lambda s: s["kwh_delivered"] / s["kwh_needed"])
+
+
+def test_urgency_now_is_full_power_at_todays_rate(mid_morning):
+    s = charging_now(mid_morning)[0]
+    out = asyncio.run(urgency(s["id"], UrgencyIn(level="now")))
+    assert out.urgency == "now" and out.boost and out.price.usd_per_kwh == S["site"]["employee_rate_usd_per_kwh"]
+    assert S["plan"][s["connector_id"]][:6] == [S["site"]["p_max_kw"]] * 6, "full power from the next slot"
+    assert s["user_stated_departure"] == mid_morning.now and s["urgent"]
+
+
+def test_urgency_soon_moves_the_deadline_and_under_15_min_is_now(mid_morning):
+    a, b = charging_now(mid_morning)[:2]
+    leave = mid_morning.now + timedelta(hours=2)
+    out = asyncio.run(urgency(a["id"], UrgencyIn(level="soon", leave_at=leave)))
+    assert out.urgency == "soon" and not out.boost and a["user_stated_departure"] == a["departure"] == leave
+    assert out.plan.ready_by == leave and out.price.usd_per_kwh == S["site"]["employee_rate_usd_per_kwh"]
+    assert sum(S["plan"][a["connector_id"]][24:]) == 0, "nothing planned after the new deadline"
+    out = asyncio.run(urgency(b["id"], UrgencyIn(level="soon", leave_at=mid_morning.now + timedelta(minutes=10))))
+    assert out.urgency == "now" and out.boost, "under 15 minutes nothing can be scheduled: full power now"
+
+
+def test_urgency_priority_keeps_the_deadline_and_raises_the_floor(mid_morning):
+    s = charging_now(mid_morning)[0]
+    was = s["user_stated_departure"]
+    out = asyncio.run(urgency(s["id"], UrgencyIn(level="priority")))
+    assert out.urgency == "priority" and not out.boost and s["user_stated_departure"] == was
+    assert out.price.usd_per_kwh == S["site"]["employee_rate_usd_per_kwh"], "any band pays exactly R"
+    from noonshift.api import car
+    c = car(mid_morning.connectors[s["connector_id"]])
+    assert c["floor_alpha"] == 0.9 and c["priority"] == 2.0
+
+
+def test_flexible_driver_pays_less_than_r_and_never_more(day):
+    """§7b on the replayed day: every non-urgent receipt is at or below R, and the day's flexible cars earned a discount."""
+    from noonshift.api import session_out
+    prices = [session_out(s).price.usd_per_kwh for s in day["sessions"].values()]
+    r = S["site"]["employee_rate_usd_per_kwh"]
+    assert max(prices) <= r and min(prices) < r

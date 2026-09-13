@@ -53,6 +53,23 @@
     "boost": {
      "title": "Boost",
      "type": "boolean"
+    },
+    "urgency": {
+     "anyOf": [
+      {
+       "enum": [
+        "now",
+        "soon",
+        "priority"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Urgency"
     }
    },
    "required": [
@@ -113,6 +130,7 @@
       "unplug",
       "deadline",
       "boost",
+      "urgency",
       "dr",
       "demo",
       "mode",
