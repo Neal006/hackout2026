@@ -12,10 +12,10 @@ export default {
         border: "#E5E7EB",
         ink: "#111827",
         "ink-muted": "#6B7280",
-        solar: "#008080",
+        solar: "#98B62D",
         "grid-blue": "#008080",
         danger: "#008080",
-        saved: "#008080",
+        saved: "#98B62D",
       },
       fontFamily: {
         sans: ["IBM Plex Sans", "sans-serif"],

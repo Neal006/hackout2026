@@ -36,7 +36,7 @@ export default function AlertsView() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button className="text-xs uppercase tracking-wider px-3 py-1.5 border border-border hover:bg-bg transition-colors">View</button>
+                  <button onClick={() => alert('Viewing alert details for ' + a.entity)} className="text-xs uppercase tracking-wider px-3 py-1.5 border border-border hover:bg-bg transition-colors">View</button>
                   <button onClick={() => triggerEvent('resolve_alert', a.id)} className="text-xs uppercase tracking-wider px-3 py-1.5 bg-ink text-surface hover:opacity-90 transition-opacity">Resolve</button>
                 </div>
               </div>

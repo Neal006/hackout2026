@@ -122,7 +122,7 @@ export default function DashboardOverview() {
             >
               <div className="col-span-2 font-medium">{site.id}</div>
               <div className="col-span-1">
-                <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide border ${site.status === 'Normal' ? 'bg-saved/10 text-saved border-saved/20' : 'bg-solar/10 text-solar border-solar/20'}`}>
+                <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide border ${site.status === 'Normal' ? 'bg-saved/10 text-saved border-saved/20' : 'bg-[#98B62D]/10 text-[#98B62D] border-[#98B62D]/20'}`}>
                   {site.status}
                 </span>
               </div>

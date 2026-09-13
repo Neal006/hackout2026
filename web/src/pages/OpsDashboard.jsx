@@ -163,7 +163,7 @@ export default function OpsDashboard() {
                     <button onClick={() => navigate('/ops/schedules')} className="w-full text-xs uppercase tracking-wider border border-border py-2 hover:bg-bg transition-colors">Edit schedule</button>
                     <button 
                       onClick={() => triggerEvent('prioritize_connector', selectedConnector.id)}
-                      className="w-full text-xs uppercase tracking-wider bg-ink text-surface py-2 hover:opacity-90 transition-opacity"
+                      className="w-full text-xs uppercase tracking-wider bg-[#98B62D] text-white py-2 hover:opacity-90 transition-opacity"
                     >
                       Prioritize (Boost)
                     </button>

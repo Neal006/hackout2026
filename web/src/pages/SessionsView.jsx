@@ -52,15 +52,15 @@ export default function SessionsView() {
               <div className="col-span-1 mono text-xs">{s.arrival}</div>
               <div className="col-span-1 mono text-xs">{s.energy}</div>
               <div className="col-span-1 text-center">
-                <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide border ${s.status === 'Completed' ? 'bg-saved/10 text-saved border-saved/20' : s.status === 'Charging' ? 'bg-solar/10 text-solar border-solar/20' : 'bg-bg text-ink-muted border-border'}`}>
+                <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide border ${s.status === 'Completed' ? 'bg-saved/10 text-saved border-saved/20' : s.status === 'Charging' ? 'bg-[#98B62D]/10 text-[#98B62D] border-[#98B62D]/20' : 'bg-[#98B62D]/10 text-[#98B62D] border-[#98B62D]/20'}`}>
                   {s.status}
                 </span>
               </div>
               <div className="col-span-1 text-center">
-                <span className={`text-xs ${s.risk === 'High' ? 'text-danger font-medium' : 'text-ink-muted'}`}>{s.risk}</span>
+                <span className={`text-xs ${s.risk === 'High' ? 'text-danger font-medium' : 'text-[#98B62D]'}`}>{s.risk}</span>
               </div>
               <div className="col-span-1 text-right">
-                <button className="text-grid-blue hover:text-ink text-xs underline border-0 p-0">Details</button>
+                <button onClick={() => alert('Session Details:\nSession ID: ' + s.id + '\nArrival: ' + s.arrival + '\nEnergy: ' + s.energy)} className="text-grid-blue hover:text-ink text-xs underline border-0 p-0">Details</button>
               </div>
             </div>
           ))}

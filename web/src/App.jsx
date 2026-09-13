@@ -10,6 +10,7 @@ import SchedulesView from './pages/SchedulesView';
 import ImpactView from './pages/ImpactView';
 import AlertsView from './pages/AlertsView';
 import TariffsView from './pages/TariffsView';
+import SettingsView from './pages/SettingsView';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
             <Route path="impact" element={<ImpactView />} />
             <Route path="alerts" element={<AlertsView />} />
             <Route path="tariffs" element={<TariffsView />} />
+            <Route path="settings" element={<SettingsView />} />
             <Route index element={<Navigate to="overview" replace />} />
           </Route>
           

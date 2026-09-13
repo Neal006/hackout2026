@@ -39,8 +39,8 @@ export default function ImpactView() {
               Every car draws full power from the moment it plugs in, under the same feed. Same {impact.kwh.toFixed(1)} kWh delivered.
             </p>
           </div>
-          <div className="border-2 border-grid-blue bg-surface p-6 flex flex-col gap-4 relative shadow-[0_0_15px_rgba(59,130,246,0.1)]">
-            <h3 className="font-semibold text-grid-blue uppercase tracking-wider text-xs text-center pb-4 border-b border-border">Noonshift Scheduled</h3>
+          <div className="border border-border bg-surface p-6 flex flex-col gap-4 relative">
+            <h3 className="font-semibold text-ink uppercase tracking-wider text-xs text-center pb-4 border-b border-border">Noonshift Scheduled</h3>
             <div className="flex justify-between items-end">
               <span className="text-sm text-ink-muted">Bill delta</span>
               <span className="mono text-xl text-saved font-medium">−${impact.saved_usd.toFixed(2)}</span>

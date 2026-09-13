@@ -60,7 +60,8 @@ export default function SchedulesView() {
 
       <section>
         <h2 className="text-lg font-medium text-ink mb-4">24-Hour Optimization Window</h2>
-        <div className="border border-border bg-surface p-6 flex flex-col relative min-h-[300px]">
+        <div className="border border-border bg-surface p-6 overflow-x-auto">
+          <div className="flex flex-col relative min-h-[300px] min-w-[800px]">
           
           <div className="absolute top-10 bottom-10 left-6 right-6 flex">
             {/* 24 hour blocks */}
@@ -89,6 +90,7 @@ export default function SchedulesView() {
             <span className="flex items-center gap-2"><div className="w-3 h-3 bg-saved/20 border border-saved/40"></div> Super Off-Peak / Clean</span>
             <span className="flex items-center gap-2"><div className="w-3 h-3 bg-danger/10 border border-danger/20"></div> Peak / Dirty</span>
             <span className="flex items-center gap-2"><div className="w-3 h-3 bg-grid-blue/80"></div> Scheduled Load</span>
+          </div>
           </div>
         </div>
       </section>
