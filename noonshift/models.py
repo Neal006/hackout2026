@@ -9,10 +9,23 @@ SessionStatus = Literal["pending", "charging", "done", "ended"]
 
 
 # ---- REST ----
+class Vehicle(BaseModel):
+    """What the driver tells us about the car. All optional: the brain plans with the bay's limit when it knows nothing."""
+    model: str | None = None
+    battery_kwh: float | None = Field(None, gt=0)
+    max_kw: float | None = Field(None, gt=0)  # the car's own AC limit (3.7 / 7 / 11 kW are common)
+
+
+NeedConfidence = Literal["declared", "history", "site"]  # solutions.md §11: where kwh_needed came from
+
+
 class SessionIn(BaseModel):
     connector_id: str
     departure_at: datetime
     kwh_needed: float | None = None
+    vehicle: Vehicle | None = None
+    soc_now: float | None = Field(None, ge=0, le=1)  # with vehicle.battery_kwh: kwh_needed = (target - now) * battery
+    target_soc: float = Field(1.0, gt=0, le=1)
 
 
 Urgency = Literal["now", "soon", "priority"]  # business.md §4b: three bands, one price (R)
@@ -43,6 +56,9 @@ class SessionOut(BaseModel):
     price: Price
     boost: bool
     urgency: Urgency | None = None  # set by POST /sessions/{id}/urgency (or /boost = "now"); price is then exactly R
+    kwh_needed: float = 0.0
+    need_confidence: NeedConfidence | None = None
+    max_kw: float | None = None  # what the brain plans with: min(bay, car), corrected by the observation guard
 
 
 class LiveOut(BaseModel):
@@ -76,6 +92,8 @@ class StatusOut(BaseModel):
     block_kw: float = 0.0
     sim_time: datetime | None = None
     safe_share_kw: float = 0.0  # per-connector static share every charger reverts to when the controller is gone
+    waiting: int = 0  # cars that arrived with no free bay
+    connectors_asap: list[str] = []  # fleet bays that are never deferred
 
 
 class PriceTier(BaseModel):
@@ -148,6 +166,12 @@ class ConnectorMeter(BaseModel):
     departure_at: datetime | None  # what the driver told us
     boost: bool
     urgency: Urgency | None = None
+    idle_min: int = 0  # minutes since the car was full and still plugged in
+    need_confidence: NeedConfidence | None = None
+    p_max_kw: float = 0.0  # what the brain plans with for this car
+    cap_observed: bool = False  # the meter said the car draws less than we planned; p_max_kw was lowered to match
+    asap: bool = False  # a connectors_asap bay
+    move_by: bool = False  # deadline tightened to make room for a waiting car
 
 
 class MeterMsg(BaseModel):
@@ -158,12 +182,13 @@ class MeterMsg(BaseModel):
     building_load_kw: float
     feed_kw: float
     connectors: list[ConnectorMeter]
+    waiting: int = 0
 
 
 class EventMsg(BaseModel):
     type: Literal["event"] = "event"
     sim_time: datetime
-    name: Literal["plug_in", "unplug", "deadline", "boost", "urgency", "dr", "demo", "mode", "day_reset"]
+    name: Literal["plug_in", "unplug", "deadline", "boost", "urgency", "done", "cap_observed", "move_by", "dr", "demo", "mode", "day_reset"]
     detail: dict
 
 

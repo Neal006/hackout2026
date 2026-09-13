@@ -10,6 +10,7 @@ SPEED = float(os.environ.get("SIM_SPEED", "480"))  # sim-seconds per real second
 SLOT = timedelta(minutes=5)
 START_HOUR = 6  # nothing happens before 06:00; skip it
 DYN_VALID_MIN = 15  # a dynamic limit expires this many minutes after it was last set (OCPP profile valid_to); then safe share
+MOVE_AFTER_MIN = 10  # Assumption A5: a driver told "done, please move" vacates within this when someone is waiting
 
 
 def safe_share_kw(site):
@@ -43,6 +44,7 @@ class Connector:
         self.session = None
         self.limit_kw = self.safe_kw
         self.dyn_left = 0
+        self.slow_min = 0  # api.observe_caps: consecutive minutes drawing well under the limit
         self.kw = 0.0
 
     @property
@@ -70,7 +72,8 @@ class Connector:
             return
         frac = s["kwh_delivered"] / s["kwh_needed"]
         taper = 1.0 if frac < 0.8 else max(0.1, (1 - frac) / 0.2)  # battery taper: linear from 80% to ~10% at full
-        self.kw = min(self.limit_kw, self.p_max_kw * taper)
+        car_kw = min(self.p_max_kw, s.get("car_kw") or self.p_max_kw)  # the car's own onboard charger limit
+        self.kw = min(self.limit_kw, car_kw * taper)
         s["kwh_delivered"] = min(s["kwh_needed"], s["kwh_delivered"] + self.kw * minutes / 60)
         if s["kwh_delivered"] >= s["kwh_needed"] - 1e-6:
             s["status"], self.kw = "done", 0.0
@@ -87,6 +90,7 @@ class Sim:
         self.now = day + timedelta(hours=START_HOUR)
         self.day_end = day + timedelta(days=1)
         self.pending = sorted(sessions, key=lambda s: s["arrival"])
+        self.waiting = []  # arrived, no free bay (solutions.md §3); plugged in as bays free up, first come first served
         self.connectors = {cid: connector_cls(cid, site["p_max_kw"], safe_share_kw(site)) for cid in site["connectors"]}
         self.sessions = {s["id"]: s for s in sessions}
 
@@ -97,28 +101,39 @@ class Sim:
         return next((c for c in self.connectors.values() if not c.session), None)
 
     def arrive(self, session):
-        """Plug a session in now. Returns the connector, or None if the lot is full."""
+        """Plug a session in now. Returns the connector, or None if the lot is full (the car then waits)."""
+        self.sessions[session["id"]] = session
         c = self.free_connector(session.get("connector_id"))
         if c:
-            self.sessions[session["id"]] = session
             c.plug_in(session)
+        elif session not in self.waiting:
+            self.waiting.append(session)
         return c
 
     def tick(self, minutes=1):
-        """Advance the clock. Returns [{"name": "plug_in"|"unplug", "session_id", "connector_id"}]."""
+        """Advance the clock. Returns [{"name": "plug_in"|"unplug"|"done", "session_id", "connector_id"}]."""
         for c in self.connectors.values():
             c.tick(minutes)
         self.now += timedelta(minutes=minutes)
         events = []
         for c in self.connectors.values():
-            if c.session and c.session["departure"] <= self.now:
+            s = c.session
+            if s and s["status"] == "done" and not s.get("idle_since"):
+                s["idle_since"] = self.now
+                events.append({"name": "done", "session_id": s["id"], "connector_id": c.id})
+            moved = s and s.get("idle_since") and self.waiting and self.now - s["idle_since"] >= timedelta(minutes=MOVE_AFTER_MIN)
+            if s and (s["departure"] <= self.now or moved):
                 s = c.unplug(self.now)
-                events.append({"name": "unplug", "session_id": s["id"], "connector_id": c.id})
+                events.append({"name": "unplug", "session_id": s["id"], "connector_id": c.id, "moved": bool(moved)})
         while self.pending and self.pending[0]["arrival"] <= self.now:
             s = self.pending.pop(0)
             c = self.arrive(s)
             if c:
                 events.append({"name": "plug_in", "session_id": s["id"], "connector_id": c.id})
+        while self.waiting and self.free_connector():
+            s = self.waiting.pop(0)
+            c = self.arrive(s)
+            events.append({"name": "plug_in", "session_id": s["id"], "connector_id": c.id, "waited_min": int((self.now - s["arrival"]).total_seconds() // 60)})
         return events
 
     def active(self):
