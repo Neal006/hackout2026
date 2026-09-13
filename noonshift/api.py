@@ -8,15 +8,16 @@ import json
 import os
 import random
 import statistics
+from collections import deque
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import TypeAdapter
 
-from . import db, scheduler, seed
-from .models import (WS_FRAMES, ConnectorMeter, ConnectorPlan, DemoOut, DrEvent, EventMsg, FlexHour, ImpactOut,
+from . import assist, db, scheduler, seed
+from .models import (AssistIn, AssistOut, WS_FRAMES, ConnectorMeter, ConnectorPlan, DemoOut, DrEvent, EventMsg, FlexHour, ImpactOut,
                      LiveOut, MeterMsg, OutageIn, PlanMsg, PlanWindow, PricePreview, PriceTier, SessionIn, SessionOut,
                      SignalHour, StatusOut, UrgencyIn)
 from .sim import SLOT, SPEED, Connector, Sim, load_sessions, safe_share_kw
@@ -156,7 +157,19 @@ async def broadcast(msg):
 
 
 async def event(name, detail):
-    await broadcast(EventMsg(sim_time=S["sim"].now, name=name, detail=detail))
+    msg = EventMsg(sim_time=S["sim"].now, name=name, detail=detail)
+    S.setdefault("events", deque(maxlen=20)).append(msg.model_dump(mode="json"))  # the assistant's "last 20 events"
+    await broadcast(msg)
+
+
+def ops_auth(authorization: str | None = Header(None)):
+    """Bearer token for operator endpoints when OPS_TOKEN is set; unset = open (it is a demo)."""
+    tok = os.environ.get("OPS_TOKEN")
+    if tok and authorization != f"Bearer {tok}":
+        raise HTTPException(401, "operator token required")
+
+
+OPS = [Depends(ops_auth)]
 
 
 def session_impact(h, remaining=()):
@@ -327,7 +340,7 @@ async def lifespan(app):
     S.update(site=json.load(open("data/site.json")), signal=json.load(open("data/signal.json")),
              tariff=json.load(open("data/tariff.json")), plan={}, plan_at=None, baseline={}, impact={}, hist={}, mode="live",
              ladder={"live": True, "cached": True, "tariff": True, "deadline": True}, live_lost_at=None,
-             last_solve_at=None, dr=[], clients=set(), next_id=1000)
+             last_solve_at=None, dr=[], clients=set(), next_id=1000, events=deque(maxlen=20))
     if os.environ.get("OCPP") == "1":
         from . import ocpp_gateway
         S["connector_cls"] = ocpp_gateway.OcppConnector
@@ -471,7 +484,7 @@ def hourly_ledger(lo, hi):
             continue
         k0 = slot_of(h["start"])
         for i, kw in enumerate(h["kw_min"]):
-            k = k0 + i // 5
+            k = k0 + (h["start"].minute % 5 + i) // 5  # minute i of a session that began mid-slot lands in its true slot
             if k < 288:
                 kwh[k] += kw / 60
     out = []
@@ -505,7 +518,7 @@ def site_peaks():
     for h in S.get("hist", {}).values():
         k0 = slot_of(h["start"])
         for i, kw in enumerate(h["kw_min"]):  # per sim-minute since plug-in
-            k = k0 + i // 5
+            k = k0 + (h["start"].minute % 5 + i) // 5  # minute i of a session that began mid-slot lands in its true slot
             if k < 288:
                 metered[k] += kw / 5
         for i, kw in enumerate(h["baseline"]):
@@ -579,6 +592,23 @@ async def openadr_event(ev: DrEvent):
     return {"accepted": True, "events": len(S["dr"]), "mode": S["mode"]}
 
 
+@app.post("/assist", response_model=AssistOut, dependencies=OPS)
+def assist_ask(body: AssistIn, request: Request):
+    """The operator assistant: explains and suggests from live state + repo docs; never acts. Falls back to templates
+    without a key; 429 with Retry-After when the model or the per-IP limit (10/min) says so."""
+    if not assist.allow(request.client.host if request.client else "?"):
+        return JSONResponse({"detail": "10 questions per minute; try again shortly."}, status_code=429, headers={"Retry-After": "30"})
+    payload, status = assist.ask(body.question, [t.model_dump() for t in body.history], body.page)
+    if status != 200:
+        return JSONResponse({"detail": payload["detail"]}, status_code=status, headers={"Retry-After": str(payload.get("retry_after", 20))})
+    return AssistOut(**payload)
+
+
+@app.get("/assist/suggestions", response_model=list[str], dependencies=OPS)
+def assist_suggestions():
+    return assist.suggestions(assist.snapshot())
+
+
 @app.websocket("/ws")
 async def ws(sock: WebSocket):
     await sock.accept()
@@ -599,7 +629,7 @@ def charging_sessions():
     return [c.session for c in S["sim"].active() if c.session["status"] == "charging"]
 
 
-@app.post("/demo/early_unplug", response_model=DemoOut)
+@app.post("/demo/early_unplug", response_model=DemoOut, dependencies=OPS)
 async def demo_early_unplug():
     """Tom: told us 17:00, leaves now. Picks the charging car with the latest deadline and least energy."""
     sim = S["sim"]
@@ -619,7 +649,7 @@ async def demo_early_unplug():
     return DemoOut(changed="session unplugged early; plan re-solved without it", detail=detail)
 
 
-@app.post("/demo/boost", response_model=DemoOut)
+@app.post("/demo/boost", response_model=DemoOut, dependencies=OPS)
 async def demo_boost():
     """Sofia: 10:30 site visit. Picks the least-charged car, moves its deadline to now+1h with Boost."""
     sim = S["sim"]
@@ -641,7 +671,7 @@ async def demo_boost():
                            "plan": out.plan.model_dump(mode="json")})
 
 
-@app.post("/demo/oversubscribe", response_model=DemoOut)
+@app.post("/demo/oversubscribe", response_model=DemoOut, dependencies=OPS)
 async def demo_oversubscribe():
     """+20 late arrivals, 2 h deadlines, on the spare connectors. More demand than the feed can serve."""
     sim = S["sim"]
@@ -664,7 +694,7 @@ async def demo_oversubscribe():
     return DemoOut(changed=f"{len(added)} cars plugged in with 2 h deadlines; plan re-solved (elastic shortfall)", detail=detail)
 
 
-@app.post("/demo/signal_outage", response_model=DemoOut)
+@app.post("/demo/signal_outage", response_model=DemoOut, dependencies=OPS)
 async def demo_signal_outage(body: OutageIn = OutageIn()):
     """Knock rungs out of the fail-safe ladder (default: the live signal) or restore all."""
     sim = S["sim"]

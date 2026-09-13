@@ -135,6 +135,22 @@ async def main():
         assert ctype.startswith("text/csv") and lines[0] == "day,hour,kwh,gco2_per_kwh,kgco2,signal_kind,signal_source" and len(lines) == 25, (ctype, lines[:2])
         assert sum(float(l.split(",")[2]) for l in lines[1:]) > 0, "the ledger carries today's metered kWh"
         print(f"[ops]    /status package={st['package']} contracted peak {st['contracted_peak_kw']} kW R=${st['employee_rate_usd_per_kwh']}/kWh signal={st['signal_kind']}; /impact.csv {len(lines) - 1} hourly rows")
+
+        # 8. the operator assistant (WP6): answers without a key, never acts, rate-limited
+        sugg = http("GET", "/assist/suggestions")
+        assert len(sugg) == 6, sugg
+        a = http("POST", "/assist", {"question": "what happens if the grid API dies?", "page": "/ops/overview",
+                                     "history": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]})
+        assert "ladder" in a["answer"] and a["suggested_actions"][0]["path"].startswith("/ops/"), a
+        assert a["fallback"] or "usage" in a, "no key -> fallback; key -> model usage"
+        b = http("POST", "/assist", {"question": sugg[3]})
+        assert b["answer"] and "try one of" not in b["answer"], b
+        try:
+            http("POST", "/assist", {"question": ""})
+            raise AssertionError("empty question accepted")
+        except urllib.error.HTTPError as e:
+            assert e.code == 422, e.code
+        print(f"[assist] {sugg[0]!r} -> {a['answer'][:70]!r}... fallback={a.get('fallback', False)} actions={[x['label'] for x in a['suggested_actions']]}")
         if imp["baseline_peak_kw"] < imp["peak_kw"]:  # possible early in the day (sprints); not a failure, just say so
             print("[ops]    note: managed peak above charge-now peak right now")
         task.cancel()

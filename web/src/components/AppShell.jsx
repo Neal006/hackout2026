@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useGlobalState } from '../context/GlobalStateContext';
 import { MODE_COPY } from '../lib/ui';
+import AssistDrawer from './AssistDrawer';
 
 const NAV = [
   { path: '/ops/overview', label: 'Overview' },
@@ -78,6 +79,7 @@ export default function AppShell() {
         )}
         <Outlet />
       </main>
+      <AssistDrawer />
     </div>
   );
 }
