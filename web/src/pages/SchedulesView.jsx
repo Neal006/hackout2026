@@ -1,96 +1,94 @@
-import { useState, useEffect } from 'react';
 import { useGlobalState } from '../context/GlobalStateContext';
 
+// Planned site kW per hour from the current plan frame (site_kw per 5-min slot from horizon_start)
+const plannedByHour = (horizonStart, siteKw) => {
+  const out = Array(24).fill(null);
+  if (!horizonStart || !siteKw.length) return out;
+  const sums = Array(24).fill(0);
+  const counts = Array(24).fill(0);
+  const t0 = new Date(horizonStart).getTime();
+  siteKw.forEach((kw, k) => {
+    const h = new Date(t0 + k * 300000).getHours();
+    if (t0 + k * 300000 - t0 < 24 * 3600000) {
+      sums[h] += kw;
+      counts[h] += 1;
+    }
+  });
+  return sums.map((s, h) => (counts[h] ? s / counts[h] : null));
+};
+
+const bucket = (g) => (g == null ? '' : g === 0 ? 'bg-saved/15' : g < 200 ? 'bg-solar/10' : 'bg-danger/5');
+
 export default function SchedulesView() {
-  const { data, triggerEvent } = useGlobalState();
-  const { siteDetail } = data;
-  
-  const [timeAgo, setTimeAgo] = useState('0s');
+  const { data } = useGlobalState();
+  const { siteDetail, status, signal } = data;
+  // solved_at is sim time, so measure against the sim clock, not Date.now()
+  const ago = siteDetail.solved_at && data.simTime ? `${Math.max(0, Math.round((new Date(data.simTime) - siteDetail.solved_at) / 60000))} sim-min ago` : '—';
 
-  useEffect(() => {
-    if (!siteDetail?.solved_at) return;
-    const timer = setInterval(() => {
-      const diff = Math.floor((Date.now() - siteDetail.solved_at) / 1000);
-      setTimeAgo(`${diff}s`);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [siteDetail?.solved_at]);
-
-  const handleReoptimize = () => {
-    triggerEvent('reoptimize_start');
-    setTimeout(() => {
-      triggerEvent('reoptimize_end');
-    }, 2000); // 2 second mock optimization
-  };
+  const planned = plannedByHour(siteDetail.horizon_start, siteDetail.site_kw);
+  const metered = siteDetail.meter_ticks.map((t) => t.ev);
+  const yMax = Math.max(status.feedKw, 1);
+  const nowHour = data.simTime ? new Date(data.simTime).getHours() : null;
 
   return (
-    <div className="p-8 max-w-5xl mx-auto w-full">
-      <header className="mb-8 flex justify-between items-end border-b border-border pb-4">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto w-full">
+      <header className="mb-6 md:mb-8 flex flex-wrap justify-between items-end gap-2 border-b border-border pb-4">
         <div>
-          <h1 className="text-2xl font-semibold text-ink">Optimization Control Center</h1>
-          <p className="text-sm text-ink-muted mt-1">Global scheduling engine status</p>
+          <h1 className="text-2xl font-semibold text-ink">Plan</h1>
+          <p className="text-sm text-ink-muted mt-1">Re-solved every 5 sim-minutes and on every event · reason: <span className="mono">{siteDetail.reason ?? '—'}</span></p>
         </div>
-        <button 
-          onClick={handleReoptimize}
-          disabled={siteDetail.isOptimizing}
-          className={`px-6 py-2 text-sm uppercase tracking-wider font-medium transition-colors ${siteDetail.isOptimizing ? 'bg-bg text-ink-muted border border-border cursor-wait' : 'bg-ink text-surface hover:opacity-90'}`}
-        >
-          {siteDetail.isOptimizing ? 'Optimizing...' : 'Re-optimize Now'}
-        </button>
       </header>
 
-      <div className="grid grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
         <div className="border border-border p-4 bg-surface flex flex-col justify-between">
-          <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">Algorithm Status</span>
-          <span className="mono text-xl font-medium">{siteDetail.isOptimizing ? 'Running (HiGHS)' : 'Idle'}</span>
+          <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">Last solved</span>
+          <span className="mono text-xl font-medium">{ago}</span>
         </div>
         <div className="border border-border p-4 bg-surface flex flex-col justify-between">
-          <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">Last Solved</span>
-          <span className="mono text-xl font-medium">{timeAgo} ago</span>
+          <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">Mode</span>
+          <span className={`mono text-xl font-medium ${status.mode === 'live' ? 'text-saved' : 'text-solar'}`}>{status.mode}</span>
         </div>
         <div className="border border-border p-4 bg-surface flex flex-col justify-between">
-          <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">Carbon Signal</span>
-          <span className="mono text-xl font-medium text-saved">Active (WattTime)</span>
+          <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">Carbon signal</span>
+          <span className="mono text-xl font-medium">{status.signalKind ?? '—'}</span>
+          <span className="text-[10px] text-ink-muted">{status.signalSource ?? ''}</span>
         </div>
         <div className="border border-border p-4 bg-surface flex flex-col justify-between">
-          <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">Tariff Data</span>
-          <span className="mono text-xl font-medium text-saved">Active (PG&E)</span>
+          <span className="text-[10px] uppercase tracking-wider text-ink-muted mb-1 block">Tariff</span>
+          <span className="mono text-sm font-medium">{status.tariffName ?? '—'}</span>
+          <span className="text-[10px] text-ink-muted">block {status.blockKw} kW</span>
         </div>
       </div>
 
       <section>
-        <h2 className="text-lg font-medium text-ink mb-4">24-Hour Optimization Window</h2>
-        <div className="border border-border bg-surface p-6 overflow-x-auto">
-          <div className="flex flex-col relative min-h-[300px] min-w-[800px]">
-          
-          <div className="absolute top-10 bottom-10 left-6 right-6 flex">
-            {/* 24 hour blocks */}
-            {Array.from({length: 24}).map((_, i) => (
-              <div key={i} className="flex-1 flex flex-col justify-end border-r border-border/30 relative group">
-                <div className="absolute bottom-[-24px] left-0 text-[10px] text-ink-muted font-mono">{i}:00</div>
-                
-                {/* Cost/Carbon background */}
-                {(i >= 9 && i <= 14) && (
-                  <div className="absolute inset-0 bg-saved/10"></div>
-                )}
-                {(i >= 16 && i <= 21) && (
-                  <div className="absolute inset-0 bg-danger/5"></div>
-                )}
-                
-                {/* Simulated Load Bar */}
-                <div 
-                  className="w-full bg-grid-blue/80 transition-all duration-500 ease-out"
-                  style={{ height: `${20 + Math.random() * (siteDetail.isOptimizing ? 10 : 60)}%` }}
-                ></div>
-              </div>
-            ))}
-          </div>
-
-          <div className="absolute bottom-2 left-6 flex gap-6 text-[10px] uppercase tracking-wider font-mono">
-            <span className="flex items-center gap-2"><div className="w-3 h-3 bg-saved/20 border border-saved/40"></div> Super Off-Peak / Clean</span>
-            <span className="flex items-center gap-2"><div className="w-3 h-3 bg-danger/10 border border-danger/20"></div> Peak / Dirty</span>
-            <span className="flex items-center gap-2"><div className="w-3 h-3 bg-grid-blue/80"></div> Scheduled Load</span>
-          </div>
+        <h2 className="text-lg font-medium text-ink mb-1">Today, hour by hour</h2>
+        <p className="text-xs text-ink-muted mb-4">Bars: planned EV kW (this plan) and metered EV kW (hours already run). Shading: the marginal signal from <span className="mono">/grid/signal</span>.</p>
+        <div className="border border-border bg-surface p-4 md:p-6 overflow-x-auto">
+          <div className="min-w-[640px]">
+            <div className="flex h-56 border-b border-border">
+              {Array.from({ length: 24 }, (_, h) => (
+                <div key={h} className={`flex-1 relative border-r border-border/30 ${bucket(signal[h]?.gco2_per_kwh)}`} title={`${String(h).padStart(2, '0')}:00 · planned ${planned[h]?.toFixed(1) ?? '—'} kW · metered ${metered[h].toFixed(1)} kW · ${signal[h]?.gco2_per_kwh ?? '?'} g/kWh`}>
+                  {nowHour === h && <div className="absolute inset-y-0 left-0 w-px bg-ink"></div>}
+                  <div className="absolute bottom-0 left-1 right-1 flex items-end gap-px h-full">
+                    <div className="flex-1 bg-grid-blue/40" style={{ height: `${Math.min(100, ((planned[h] ?? 0) / yMax) * 100)}%` }}></div>
+                    <div className="flex-1 bg-grid-blue" style={{ height: `${Math.min(100, (metered[h] / yMax) * 100)}%` }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex">
+              {Array.from({ length: 24 }, (_, h) => (
+                <div key={h} className="flex-1 text-[9px] mono text-ink-muted text-center pt-1">{h % 3 === 0 ? String(h).padStart(2, '0') : ''}</div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-4 text-[10px] uppercase tracking-wider text-ink-muted mt-4">
+              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-grid-blue/40"></span> planned EV kW</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-grid-blue"></span> metered EV kW</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-saved/15 border border-border"></span> 0 g/kWh</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-solar/10 border border-border"></span> under 200 g/kWh</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-danger/5 border border-border"></span> 200 g/kWh and above</span>
+              <span className="flex items-center gap-2"><span className="w-px h-3 bg-ink"></span> now</span>
+            </div>
           </div>
         </div>
       </section>

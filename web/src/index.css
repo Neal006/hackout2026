@@ -38,3 +38,7 @@ button {
   border-width: 1px;
   border-style: solid;
 }
+
+/* New rows / changed status get a teal wash that fades out, so a demo button's effect is obvious. Runs once on mount. */
+.flash { animation: flash 6s ease-out 1; }
+@keyframes flash { from { background-color: rgba(0, 128, 128, 0.28); } to { background-color: transparent; } }

@@ -41,7 +41,7 @@ async def main():
         assert meters, "no meter frames on /ws"
         sim_now = datetime.fromisoformat(meters[-1]["sim_time"])
         st = http("GET", "/sites/site-1/status")
-        assert st["feed_kw"] > 0 and st["block_kw"] > 0 and st["sim_time"], st
+        assert st["feed_kw"] > 0 and st["block_kw"] > 0 and st["sim_time"] and st["safe_share_kw"] > 0 and st["connectors_asap"], st
         free = [c["connector_id"] for c in meters[-1]["connectors"] if c["session_id"] is None]
         connector = free[-1]
         print(f"[ws]     sim_time={sim_now}  mode={st['mode']}  feed={st['feed_kw']} kW block={st['block_kw']} kW  free={len(free)} -> driver takes {connector}")
@@ -81,13 +81,37 @@ async def main():
 
         # 6. the four ops demo buttons. Two more (un-boosted) drivers first, so that after "early unplug" takes
         #    one of them, "boost" still finds a car that isn't already boosted; early in the sim day ours may be alone.
-        for cid in (free[-2], free[-3]):
-            http("POST", "/sessions", {"connector_id": cid, "departure_at": departure, "kwh_needed": 9.0})
+        others = [http("POST", "/sessions", {"connector_id": cid, "departure_at": departure, "kwh_needed": 9.0})["session_id"]
+                  for cid in (free[-2], free[-3])]
         await asyncio.sleep(1.5)
+
+        # 5b. a fleet van on a connectors_asap bay is never deferred; a PHEV form caps the plan at the car's 3.3 kW
+        van = http("POST", "/sessions", {"connector_id": st["connectors_asap"][0], "departure_at": departure, "kwh_needed": 20})
+        phev = http("POST", "/sessions", {"connector_id": free[-4], "departure_at": departure,
+                                          "vehicle": {"model": "PHEV", "battery_kwh": 40, "max_kw": 3.3}, "soc_now": 0.7, "target_soc": 0.9})
+        assert van["plan"]["start"] and phev["kwh_needed"] == 8.0 and phev["need_confidence"] == "declared" and phev["max_kw"] == 3.3
+        await asyncio.sleep(1.5)
+        plans = frames_of(frames, "plan")[-1]["connectors"]
+        assert max(next(c["kw"] for c in plans if c["session_id"] == phev["session_id"])) <= 3.3
+        assert next(c["kw"] for c in plans if c["session_id"] == van["session_id"])[0] == 7.0, "asap bay: full power now"
+        print(f"[driver] van on {st['connectors_asap'][0]} at full power; PHEV form -> {phev['kwh_needed']} kWh ({phev['need_confidence']}) capped at {phev['max_kw']} kW")
+
+        # 6a. the emergency bands (business.md §4b): "soon" moves the deadline, "priority" keeps it; both pay exactly R
+        soon_at = (sim_now + timedelta(hours=1, minutes=30)).replace(second=0, microsecond=0).isoformat()
+        u1 = http("POST", f"/sessions/{others[0]}/urgency", {"level": "soon", "leave_at": soon_at})
+        u2 = http("POST", f"/sessions/{others[1]}/urgency", {"level": "priority"})
+        assert u1["urgency"] == "soon" and u1["plan"]["ready_by"].startswith(soon_at[:16]) and not u1["boost"]
+        assert u2["urgency"] == "priority" and u2["plan"]["ready_by"].startswith(departure[:16])
+        assert u1["price"]["usd_per_kwh"] == u2["price"]["usd_per_kwh"] == b["price"]["usd_per_kwh"], "every band pays R"
+        await asyncio.sleep(2.5)
+        assert frames_of(frames, "event", name="urgency", level="soon") and frames_of(frames, "event", name="urgency", level="priority")
+        mine = {c["session_id"]: c for c in frames_of(frames, "meter")[-1]["connectors"]}
+        assert mine[others[0]]["urgency"] == "soon" and mine[others[1]]["urgency"] == "priority"
+        print(f"[driver] urgency soon -> ready_by {u1['plan']['ready_by']} ${u1['price']['usd_per_kwh']}/kWh; priority -> ${u2['price']['usd_per_kwh']}/kWh; ops sees both")
         for path, body in (("/demo/early_unplug", None), ("/demo/boost", None), ("/demo/oversubscribe", None),
                            ("/demo/signal_outage", {"rungs": ["live"]})):
             d = http("POST", path, body)
-            print(f"[ops]    POST {path} -> {d['changed']}")
+            print(f"[ops]    POST {path} -> {d['changed']}" + (f" (waiting {d['detail']['waiting']})" if "waiting" in d["detail"] else ""))
         await asyncio.sleep(2.5)
         assert frames_of(frames, "event", name="unplug"), "unplug event not broadcast"
         assert frames_of(frames, "event", name="mode"), "mode event not broadcast"
@@ -99,7 +123,34 @@ async def main():
         print(f"[ops]    ladder dropped to {st['mode']} and restored to live")
 
         imp = http("GET", "/sites/site-1/impact")
-        print(f"[ops]    /impact sessions={imp['sessions']} kwh={imp['kwh']} saved=${imp['saved_usd']} {imp['saved_kgco2']} kg  peak {imp['peak_kw']} kW vs baseline {imp['baseline_peak_kw']} kW")
+        assert 0 <= imp["renewable_share"] <= 1 and "health_usd" in imp
+        print(f"[ops]    /impact sessions={imp['sessions']} kwh={imp['kwh']} saved=${imp['saved_usd']} {imp['saved_kgco2']} kg  peak {imp['peak_kw']} kW vs baseline {imp['baseline_peak_kw']} kW  renewable-hour share {100 * imp['renewable_share']:.0f}%")
+
+        # 7. the facilities manager's fields and the audit ledger (WP5)
+        st = http("GET", "/sites/site-1/status")
+        assert st["contracted_peak_kw"] > 0 and st["package"] in ("capacity", "clean-hours", "pilot") and st["n_connectors"] == 60 and "ladder" in st
+        with urllib.request.urlopen(API + "/sites/site-1/impact.csv") as r:
+            csv_text, ctype = r.read().decode(), r.headers.get("Content-Type", "")
+        lines = csv_text.strip().splitlines()
+        assert ctype.startswith("text/csv") and lines[0] == "day,hour,kwh,gco2_per_kwh,kgco2,signal_kind,signal_source" and len(lines) == 25, (ctype, lines[:2])
+        assert sum(float(l.split(",")[2]) for l in lines[1:]) > 0, "the ledger carries today's metered kWh"
+        print(f"[ops]    /status package={st['package']} contracted peak {st['contracted_peak_kw']} kW R=${st['employee_rate_usd_per_kwh']}/kWh signal={st['signal_kind']}; /impact.csv {len(lines) - 1} hourly rows")
+
+        # 8. the operator assistant (WP6): answers without a key, never acts, rate-limited
+        sugg = http("GET", "/assist/suggestions")
+        assert len(sugg) == 6, sugg
+        a = http("POST", "/assist", {"question": "what happens if the grid API dies?", "page": "/ops/overview",
+                                     "history": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]})
+        assert "ladder" in a["answer"] and a["suggested_actions"][0]["path"].startswith("/ops/"), a
+        assert a["fallback"] or "usage" in a, "no key -> fallback; key -> model usage"
+        b = http("POST", "/assist", {"question": sugg[3]})
+        assert b["answer"] and "try one of" not in b["answer"], b
+        try:
+            http("POST", "/assist", {"question": ""})
+            raise AssertionError("empty question accepted")
+        except urllib.error.HTTPError as e:
+            assert e.code == 422, e.code
+        print(f"[assist] {sugg[0]!r} -> {a['answer'][:70]!r}... fallback={a.get('fallback', False)} actions={[x['label'] for x in a['suggested_actions']]}")
         if imp["baseline_peak_kw"] < imp["peak_kw"]:  # possible early in the day (sprints); not a failure, just say so
             print("[ops]    note: managed peak above charge-now peak right now")
         task.cancel()

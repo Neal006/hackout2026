@@ -60,9 +60,60 @@
     }
    }
   },
+  "/sessions/{sid}/urgency": {
+   "post": {
+    "summary": "Urgency",
+    "description": "business.md \u00a74b. now: deadline = now, full power (the ASAP path). soon: deadline = leave_at, the LP picks the\ncleanest slots inside the window (< 15 min away = now). priority: deadline unchanged, floor 90 % pro-rata and the\nshortfall weight doubled. Every band marks the session urgent, so price() returns exactly R.",
+    "operationId": "urgency_sessions__sid__urgency_post",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Sid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UrgencyIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SessionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/sessions/{sid}/boost": {
    "post": {
     "summary": "Boost",
+    "description": "Alias for urgency \"now\" (WattWise's \"Charge now\" button).",
     "operationId": "boost_sessions__sid__boost_post",
     "parameters": [
      {
@@ -250,6 +301,80 @@
     }
    }
   },
+  "/sites/{site_id}/impact.csv": {
+   "get": {
+    "summary": "Site Impact Csv",
+    "description": "The audit-ready ledger (solutions.md \u00a712): LCFS takes the kWh column today; an hourly-EAC registry takes the rest.",
+    "operationId": "site_impact_csv_sites__site_id__impact_csv_get",
+    "parameters": [
+     {
+      "name": "site_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Site Id"
+      }
+     },
+     {
+      "name": "from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "From"
+      }
+     },
+     {
+      "name": "to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "To"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/plain": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/sites/{site_id}/status": {
    "get": {
     "summary": "Site Status",
@@ -292,7 +417,7 @@
   "/price": {
    "get": {
     "summary": "Price Preview",
-    "description": "Deadline sets the price: preview the tier for a ready-by time before the driver commits.",
+    "description": "What a ready-by would cost before plugging in. No session yet, so the discount is today's site saving rate so far\n(sum of measured session savings over delivered kWh) applied to this need: an estimate, settled on the receipt.",
     "operationId": "price_preview_price_get",
     "parameters": [
      {
@@ -423,11 +548,136 @@
     }
    }
   },
+  "/assist": {
+   "post": {
+    "summary": "Assist Ask",
+    "description": "The operator assistant: explains and suggests from live state + repo docs; never acts. Falls back to templates\nwithout a key; 429 with Retry-After when the model or the per-IP limit (10/min) says so.",
+    "operationId": "assist_ask_assist_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AssistIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AssistOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/assist/suggestions": {
+   "get": {
+    "summary": "Assist Suggestions",
+    "operationId": "assist_suggestions_assist_suggestions_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         },
+         "title": "Response Assist Suggestions Assist Suggestions Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/demo/early_unplug": {
    "post": {
     "summary": "Demo Early Unplug",
     "description": "Tom: told us 17:00, leaves now. Picks the charging car with the latest deadline and least energy.",
     "operationId": "demo_early_unplug_demo_early_unplug_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -435,6 +685,16 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -447,6 +707,24 @@
     "summary": "Demo Boost",
     "description": "Sofia: 10:30 site visit. Picks the least-charged car, moves its deadline to now+1h with Boost.",
     "operationId": "demo_boost_demo_boost_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -454,6 +732,16 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -466,6 +754,24 @@
     "summary": "Demo Oversubscribe",
     "description": "+20 late arrivals, 2 h deadlines, on the spare connectors. More demand than the feed can serve.",
     "operationId": "demo_oversubscribe_demo_oversubscribe_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -473,6 +779,16 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/DemoOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -485,6 +801,24 @@
     "summary": "Demo Signal Outage",
     "description": "Knock rungs out of the fail-safe ladder (default: the live signal) or restore all.",
     "operationId": "demo_signal_outage_demo_signal_outage_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
     "requestBody": {
      "content": {
       "application/json": {
@@ -527,6 +861,104 @@
  },
  "components": {
   "schemas": {
+   "AssistAction": {
+    "properties": {
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "path": {
+      "type": "string",
+      "title": "Path"
+     }
+    },
+    "type": "object",
+    "required": [
+     "label",
+     "path"
+    ],
+    "title": "AssistAction"
+   },
+   "AssistIn": {
+    "properties": {
+     "question": {
+      "type": "string",
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Question"
+     },
+     "history": {
+      "items": {
+       "$ref": "#/components/schemas/Turn"
+      },
+      "type": "array",
+      "title": "History",
+      "default": []
+     },
+     "page": {
+      "type": "string",
+      "maxLength": 200,
+      "title": "Page",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "required": [
+     "question"
+    ],
+    "title": "AssistIn"
+   },
+   "AssistOut": {
+    "properties": {
+     "answer": {
+      "type": "string",
+      "title": "Answer"
+     },
+     "sources": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Sources",
+      "default": []
+     },
+     "suggested_actions": {
+      "items": {
+       "$ref": "#/components/schemas/AssistAction"
+      },
+      "type": "array",
+      "title": "Suggested Actions",
+      "default": []
+     },
+     "fallback": {
+      "type": "boolean",
+      "title": "Fallback",
+      "default": false
+     },
+     "degraded": {
+      "type": "boolean",
+      "title": "Degraded",
+      "default": false
+     },
+     "usage": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Usage"
+     }
+    },
+    "type": "object",
+    "required": [
+     "answer"
+    ],
+    "title": "AssistOut"
+   },
    "ConnectorPlan": {
     "properties": {
      "connector_id": {
@@ -665,6 +1097,22 @@
       "type": "number",
       "title": "Baseline Peak Kw",
       "default": 0.0
+     },
+     "renewable_share": {
+      "type": "number",
+      "title": "Renewable Share",
+      "default": 0.0
+     },
+     "health_usd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Health Usd"
      },
      "note": {
       "type": "string",
@@ -971,6 +1419,36 @@
        }
       ],
       "title": "Kwh Needed"
+     },
+     "vehicle": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vehicle"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "soc_now": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 1.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Soc Now"
+     },
+     "target_soc": {
+      "type": "number",
+      "maximum": 1.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Target Soc",
+      "default": 1.0
      }
     },
     "type": "object",
@@ -1021,6 +1499,54 @@
      "boost": {
       "type": "boolean",
       "title": "Boost"
+     },
+     "urgency": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "now",
+         "soon",
+         "priority"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Urgency"
+     },
+     "kwh_needed": {
+      "type": "number",
+      "title": "Kwh Needed",
+      "default": 0.0
+     },
+     "need_confidence": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "declared",
+         "history",
+         "site"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Need Confidence"
+     },
+     "max_kw": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Kw"
      }
     },
     "type": "object",
@@ -1117,6 +1643,109 @@
        }
       ],
       "title": "Sim Time"
+     },
+     "safe_share_kw": {
+      "type": "number",
+      "title": "Safe Share Kw",
+      "default": 0.0
+     },
+     "waiting": {
+      "type": "integer",
+      "title": "Waiting",
+      "default": 0
+     },
+     "connectors_asap": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Connectors Asap",
+      "default": []
+     },
+     "n_connectors": {
+      "type": "integer",
+      "title": "N Connectors",
+      "default": 0
+     },
+     "p_max_kw": {
+      "type": "number",
+      "title": "P Max Kw",
+      "default": 0.0
+     },
+     "contracted_peak_kw": {
+      "type": "number",
+      "title": "Contracted Peak Kw",
+      "default": 0.0
+     },
+     "package": {
+      "type": "string",
+      "enum": [
+       "capacity",
+       "clean-hours",
+       "pilot"
+      ],
+      "title": "Package",
+      "default": "pilot"
+     },
+     "employee_rate_usd_per_kwh": {
+      "type": "number",
+      "title": "Employee Rate Usd Per Kwh",
+      "default": 0.0
+     },
+     "driver_share": {
+      "type": "number",
+      "title": "Driver Share",
+      "default": 0.5
+     },
+     "noonshift_share": {
+      "type": "number",
+      "title": "Noonshift Share",
+      "default": 0.2
+     },
+     "signal_kind": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "marginal",
+         "average"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal Kind"
+     },
+     "signal_source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal Source"
+     },
+     "tariff_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tariff Name"
+     },
+     "ladder": {
+      "additionalProperties": {
+       "type": "boolean"
+      },
+      "type": "object",
+      "title": "Ladder",
+      "default": {}
      }
     },
     "type": "object",
@@ -1126,6 +1755,59 @@
      "connectors_active"
     ],
     "title": "StatusOut"
+   },
+   "Turn": {
+    "properties": {
+     "role": {
+      "type": "string",
+      "enum": [
+       "user",
+       "assistant"
+      ],
+      "title": "Role"
+     },
+     "content": {
+      "type": "string",
+      "maxLength": 4000,
+      "title": "Content"
+     }
+    },
+    "type": "object",
+    "required": [
+     "role",
+     "content"
+    ],
+    "title": "Turn"
+   },
+   "UrgencyIn": {
+    "properties": {
+     "level": {
+      "type": "string",
+      "enum": [
+       "now",
+       "soon",
+       "priority"
+      ],
+      "title": "Level"
+     },
+     "leave_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Leave At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "level"
+    ],
+    "title": "UrgencyIn"
    },
    "ValidationError": {
     "properties": {
@@ -1159,6 +1841,48 @@
      "type"
     ],
     "title": "ValidationError"
+   },
+   "Vehicle": {
+    "properties": {
+     "model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model"
+     },
+     "battery_kwh": {
+      "anyOf": [
+       {
+        "type": "number",
+        "exclusiveMinimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Battery Kwh"
+     },
+     "max_kw": {
+      "anyOf": [
+       {
+        "type": "number",
+        "exclusiveMinimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Kw"
+     }
+    },
+    "type": "object",
+    "title": "Vehicle",
+    "description": "What the driver tells us about the car. All optional: the brain plans with the bay's limit when it knows nothing."
    }
   }
  }

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: backend · pytest + prove gate + smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Unit + day-replay tests
+        run: python -m pytest
+      - name: prove.py gate (CO2 saving >= 15 %, 0 fallbacks)
+        run: python scripts/prove.py
+      - name: End-to-end smoke (driver REST -> /ws -> ops, four demo buttons, ladder)
+        env:
+          SIM_SPEED: "60"
+        run: |
+          uvicorn noonshift.api:app --port 8000 > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/health && break; sleep 1; done
+          python scripts/smoke.py
+      - name: Contract files are committed and current
+        # api.py regenerates docs/openapi.json + docs/ws-frames.json on start; a diff means the front-end contract changed without being committed
+        run: git diff --exit-code -- docs/openapi.json docs/ws-frames.json
+      - if: failure()
+        run: tail -50 api.log
+
+  frontend:
+    name: ${{ matrix.app }} · lint + build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [web, wattwise]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build  # wattwise runs tsc -b first, so this is the type check too
