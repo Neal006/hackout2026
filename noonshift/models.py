@@ -81,6 +81,8 @@ class ImpactOut(BaseModel):
     saved_kgco2: float
     peak_kw: float = 0.0  # highest metered site kW (EV + building) so far today
     baseline_peak_kw: float = 0.0  # same, had every car charged at full power from plug-in
+    renewable_share: float = 0.0  # share of delivered kWh in slots where the marginal source was renewable (MOER = 0)
+    health_usd: float | None = None  # metrics.md §4: avoided health damage, when the signal carries an index
     note: str = "estimate vs charge-immediately baseline"
 
 
@@ -94,6 +96,17 @@ class StatusOut(BaseModel):
     safe_share_kw: float = 0.0  # per-connector static share every charger reverts to when the controller is gone
     waiting: int = 0  # cars that arrived with no free bay
     connectors_asap: list[str] = []  # fleet bays that are never deferred
+    n_connectors: int = 0
+    p_max_kw: float = 0.0
+    contracted_peak_kw: float = 0.0  # the building's contracted demand; default = feed_kw (Assumption A2)
+    package: Literal["capacity", "clean-hours", "pilot"] = "pilot"  # business.md §9b (Assumption A3)
+    employee_rate_usd_per_kwh: float = 0.0  # R
+    driver_share: float = 0.5  # alpha
+    noonshift_share: float = 0.2  # beta
+    signal_kind: Literal["marginal", "average"] | None = None
+    signal_source: str | None = None
+    tariff_name: str | None = None
+    ladder: dict[str, bool] = {}
 
 
 class PriceTier(BaseModel):

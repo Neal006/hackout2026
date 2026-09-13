@@ -301,6 +301,80 @@
     }
    }
   },
+  "/sites/{site_id}/impact.csv": {
+   "get": {
+    "summary": "Site Impact Csv",
+    "description": "The audit-ready ledger (solutions.md \u00a712): LCFS takes the kWh column today; an hourly-EAC registry takes the rest.",
+    "operationId": "site_impact_csv_sites__site_id__impact_csv_get",
+    "parameters": [
+     {
+      "name": "site_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Site Id"
+      }
+     },
+     {
+      "name": "from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "From"
+      }
+     },
+     {
+      "name": "to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "To"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/plain": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/sites/{site_id}/status": {
    "get": {
     "summary": "Site Status",
@@ -716,6 +790,22 @@
       "type": "number",
       "title": "Baseline Peak Kw",
       "default": 0.0
+     },
+     "renewable_share": {
+      "type": "number",
+      "title": "Renewable Share",
+      "default": 0.0
+     },
+     "health_usd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Health Usd"
      },
      "note": {
       "type": "string",
@@ -1264,6 +1354,91 @@
       "type": "array",
       "title": "Connectors Asap",
       "default": []
+     },
+     "n_connectors": {
+      "type": "integer",
+      "title": "N Connectors",
+      "default": 0
+     },
+     "p_max_kw": {
+      "type": "number",
+      "title": "P Max Kw",
+      "default": 0.0
+     },
+     "contracted_peak_kw": {
+      "type": "number",
+      "title": "Contracted Peak Kw",
+      "default": 0.0
+     },
+     "package": {
+      "type": "string",
+      "enum": [
+       "capacity",
+       "clean-hours",
+       "pilot"
+      ],
+      "title": "Package",
+      "default": "pilot"
+     },
+     "employee_rate_usd_per_kwh": {
+      "type": "number",
+      "title": "Employee Rate Usd Per Kwh",
+      "default": 0.0
+     },
+     "driver_share": {
+      "type": "number",
+      "title": "Driver Share",
+      "default": 0.5
+     },
+     "noonshift_share": {
+      "type": "number",
+      "title": "Noonshift Share",
+      "default": 0.2
+     },
+     "signal_kind": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "marginal",
+         "average"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal Kind"
+     },
+     "signal_source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Signal Source"
+     },
+     "tariff_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tariff Name"
+     },
+     "ladder": {
+      "additionalProperties": {
+       "type": "boolean"
+      },
+      "type": "object",
+      "title": "Ladder",
+      "default": {}
      }
     },
     "type": "object",

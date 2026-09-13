@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import TypeAdapter
 
 from . import db, scheduler, seed
@@ -168,7 +169,8 @@ def session_impact(h, remaining=()):
     series = metered + list(remaining)[:288 - full]
     signal = {"moer": aligned(S["signal"]["moer"], h["start"]), "kind": S["signal"]["kind"]}
     tariff = dict(S["tariff"], price_per_kwh=aligned(S["tariff"]["price_per_kwh"], h["start"]))
-    return scheduler.impact({"s": series}, {"s": h["baseline"]}, signal, tariff)
+    signal["health_damage"] = aligned(S["signal"]["health_damage"], h["start"]) if S["signal"].get("health_damage") else None
+    return scheduler.impact({"s": series}, {"s": h["baseline"]}, signal, tariff, health=bool(S["signal"].get("health_damage")))
 
 
 def meter_history():
@@ -448,10 +450,51 @@ def site_impact(site_id: str, from_: datetime | None = Query(None, alias="from")
     ss = [s for s in sim.sessions.values() if lo <= s["arrival"] < hi and s["status"] != "pending"]
     imps = [S["impact"].get(s["id"], {"saved_usd": 0.0, "saved_kgco2": 0.0}) for s in ss]
     actual, base = site_peaks()
+    ledger = hourly_ledger(lo, hi)
+    kwh = sum(r["kwh"] for r in ledger)
     return ImpactOut(from_=lo, to=hi, sessions=len(ss), kwh=round(sum(s["kwh_delivered"] for s in ss), 2),
                      saved_usd=round(sum(i["saved_usd"] for i in imps), 2),
                      saved_kgco2=round(sum(i["saved_kgco2"] for i in imps), 2),
-                     peak_kw=actual, baseline_peak_kw=base)
+                     peak_kw=actual, baseline_peak_kw=base,
+                     renewable_share=round(sum(r["kwh"] for r in ledger if r["gco2_per_kwh"] == 0) / kwh, 4) if kwh else 0.0,
+                     health_usd=None if S["signal"].get("health_damage") is None else round(sum(
+                         S["impact"].get(s["id"], {}).get("health_usd") or 0.0 for s in ss), 2))
+
+
+def hourly_ledger(lo, hi):
+    """solutions.md §12: the hourly record behind every carbon claim, from metered per-minute kW and the day's signal.
+    Columns: hour, kWh, gCO2/kWh (hourly mean of the signal), kgCO2 (per-slot, exact), signal kind and source."""
+    moer, kind, src = S["signal"]["moer"], S["signal"]["kind"], S["signal"].get("source", "")
+    kwh = [0.0] * 288
+    for h in S.get("hist", {}).values():
+        if not (lo <= h["start"] < hi):
+            continue
+        k0 = slot_of(h["start"])
+        for i, kw in enumerate(h["kw_min"]):
+            k = k0 + i // 5
+            if k < 288:
+                kwh[k] += kw / 60
+    out = []
+    for hour in range(24):
+        e = sum(kwh[hour * 12:(hour + 1) * 12])
+        kg = sum(kwh[k] * moer[k] / 1000 for k in range(hour * 12, (hour + 1) * 12))
+        out.append({"hour": hour, "kwh": round(e, 3), "gco2_per_kwh": round(sum(moer[hour * 12:(hour + 1) * 12]) / 12, 1),
+                    "kgco2": round(kg, 4), "signal_kind": kind, "signal_source": src})
+    return out
+
+
+@app.get("/sites/{site_id}/impact.csv", response_class=PlainTextResponse)
+def site_impact_csv(site_id: str, from_: datetime | None = Query(None, alias="from"), to: datetime | None = None):
+    """The audit-ready ledger (solutions.md §12): LCFS takes the kWh column today; an hourly-EAC registry takes the rest."""
+    check_site(site_id)
+    sim = S["sim"]
+    lo, hi = from_ or sim.day_end - timedelta(days=1), to or sim.day_end
+    rows = ["day,hour,kwh,gco2_per_kwh,kgco2,signal_kind,signal_source"]
+    day = lo.date().isoformat()
+    for r in hourly_ledger(lo, hi):
+        rows.append(f"{day},{r['hour']:02d},{r['kwh']:.3f},{r['gco2_per_kwh']},{r['kgco2']:.4f},{r['signal_kind']},{r['signal_source']}")
+    return PlainTextResponse("\n".join(rows) + "\n", media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="noonshift-{site_id}-{day}.csv"'})
 
 
 def site_peaks():
@@ -476,11 +519,16 @@ def site_peaks():
 @app.get("/sites/{site_id}/status", response_model=StatusOut)
 def site_status(site_id: str):
     check_site(site_id)
+    site = S["site"]
     return StatusOut(mode=S["mode"], last_solve_at=S["last_solve_at"],
                      connectors_active=sum(c.status == "charging" for c in S["sim"].active()),
-                     feed_kw=S["site"]["feed_kw"], block_kw=S["site"]["block_kw"], sim_time=S["sim"].now,
-                     safe_share_kw=safe_share_kw(S["site"]), waiting=len(S["sim"].waiting),
-                     connectors_asap=S["site"].get("connectors_asap", []))
+                     feed_kw=site["feed_kw"], block_kw=site["block_kw"], sim_time=S["sim"].now,
+                     safe_share_kw=safe_share_kw(site), waiting=len(S["sim"].waiting),
+                     connectors_asap=site.get("connectors_asap", []), n_connectors=len(site["connectors"]), p_max_kw=site["p_max_kw"],
+                     contracted_peak_kw=site.get("contracted_peak_kw") or site["feed_kw"], package=site.get("package", "pilot"),
+                     employee_rate_usd_per_kwh=site_rate(), driver_share=site.get("driver_share", 0.5),
+                     noonshift_share=site.get("noonshift_share", 0.2), signal_kind=S["signal"].get("kind"),
+                     signal_source=S["signal"].get("source"), tariff_name=S["tariff"].get("name"), ladder=S["ladder"])
 
 
 @app.get("/price", response_model=PricePreview)
