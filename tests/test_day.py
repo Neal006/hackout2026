@@ -12,7 +12,7 @@ from noonshift import scheduler
 from noonshift.api import (S, aligned, demo_boost, demo_early_unplug, demo_oversubscribe, demo_signal_outage, site_impact,
                            step, urgency)
 from noonshift.models import OutageIn, UrgencyIn
-from noonshift.sim import Sim, load_sessions
+from noonshift.sim import DYN_VALID_MIN, Sim, load_sessions, safe_share_kw
 
 EARLY = {7, 23}  # seed.py: told us ~17:00, actually leave ~13:00
 DATA = Path(__file__).parent / "data"  # frozen copy of the seeded placeholder day: data/ may hold real data later
@@ -178,7 +178,9 @@ def test_demo_signal_outage_walks_the_ladder_and_keeps_planning(mid_morning):
     assert out.detail["mode_after"] == "deadline" and S["plan"], "deadline-only rung still yields a plan"
     assert all(c.limit_kw == S["plan"][c.id][0] for c in mid_morning.active() if c.status == "charging")
     out = asyncio.run(demo_signal_outage(OutageIn(rungs=["deadline"])))
-    assert out.detail["mode_after"] == "full" and all(c.limit_kw == c.p_max_kw for c in mid_morning.active())
+    share = safe_share_kw(S["site"])
+    assert out.detail["mode_after"] == "full" and all(c.limit_kw == share for c in mid_morning.active()), "full = the static share, not p_max"
+    assert sum(c.limit_kw for c in mid_morning.connectors.values()) <= S["site"]["feed_kw"] - max(S["site"]["building_load_kw"])
     out = asyncio.run(demo_signal_outage(OutageIn(restore=True)))
     assert out.detail["mode_after"] == "live"
 
@@ -225,3 +227,22 @@ def test_flexible_driver_pays_less_than_r_and_never_more(day):
     prices = [session_out(s).price.usd_per_kwh for s in day["sessions"].values()]
     r = S["site"]["employee_rate_usd_per_kwh"]
     assert max(prices) <= r and min(prices) < r
+
+
+# ---- the controller dies (solutions.md §5) ----
+def test_when_the_control_loop_dies_the_site_falls_back_to_the_static_share(mid_morning):
+    """Nobody calls step() after 10:30: no re-solve, no apply_limits. Cars keep their last limit for DYN_VALID_MIN
+    minutes (the dynamic profile's valid_to), then revert to the static share; new arrivals plug in on it. The site
+    never exceeds its headroom, and after the expiry never exceeds n * safe_share_kw, with no controller at all."""
+    sim = mid_morning
+    share, n = safe_share_kw(S["site"]), len(sim.connectors)
+    worst_headroom, worst_after = -1e9, -1e9
+    for minute in range(1, 6 * 60 + 1):
+        sim.tick(1)
+        ev_kw = sum(c.kw for c in sim.connectors.values())
+        worst_headroom = max(worst_headroom, ev_kw - headroom_now())
+        if minute > DYN_VALID_MIN:
+            worst_after = max(worst_after, ev_kw - n * share)
+    assert worst_headroom <= 1e-6, f"site exceeded its headroom by {worst_headroom:.1f} kW with the loop dead"
+    assert worst_after <= 1e-6, f"after {DYN_VALID_MIN} min the site drew {worst_after:.1f} kW above n * safe share"
+    assert all(c.limit_kw == share for c in sim.active()), "every plugged car sits on the static share"

@@ -81,8 +81,10 @@ def _slots_until(t, now):
     return max(0, min(HORIZON, math.ceil((t - now).total_seconds() / 300)))
 
 
-def _full_power(cars):
-    return {c["connector_id"]: [float(c["p_max_kw"])] * HORIZON for c in cars}
+def _full_power(cars, site=None):
+    """No plan: each charger on the site's static share (solutions.md §5), or its own max when no share is configured."""
+    share = (site or {}).get("safe_share_kw") or math.inf
+    return {c["connector_id"]: [float(min(share, c["p_max_kw"]))] * HORIZON for c in cars}
 
 
 def solve_lp(cars, site, signal, tariff, now):
@@ -200,7 +202,7 @@ def solve_lp(cars, site, signal, tariff, now):
     if res.status != 0:  # elastic LP cannot be infeasible; if HiGHS still fails, fail open like the ladder does
         log.error("linprog status %s (%s); falling back to full power", res.status, res.message)
         info["status"] = f"fallback:{res.status}"
-        return _full_power(cars), info
+        return _full_power(cars, site), info
     info["status"] = "optimal"
     x = res.x
     plan = {car["connector_id"]: np.maximum(x[i * H:(i + 1) * H], 0.0) for i, car in enumerate(cars)}

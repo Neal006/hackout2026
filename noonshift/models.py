@@ -75,6 +75,7 @@ class StatusOut(BaseModel):
     feed_kw: float = 0.0
     block_kw: float = 0.0
     sim_time: datetime | None = None
+    safe_share_kw: float = 0.0  # per-connector static share every charger reverts to when the controller is gone
 
 
 class PriceTier(BaseModel):

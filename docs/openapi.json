@@ -1184,6 +1184,11 @@
        }
       ],
       "title": "Sim Time"
+     },
+     "safe_share_kw": {
+      "type": "number",
+      "title": "Safe Share Kw",
+      "default": 0.0
      }
     },
     "type": "object",
